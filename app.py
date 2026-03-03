@@ -1,6 +1,6 @@
 # ============================================
 # MASI FUTURES - Application Streamlit
-# Version avec Scraping Bourse de Casablanca
+# Version avec Sidebar et Scraping Optimisé
 # ============================================
 
 import streamlit as st
@@ -9,7 +9,7 @@ import numpy as np
 import plotly.graph_objects as go
 import config
 from utils.calculations import prix_future_theorique, valeur_notionnelle, jours_vers_annees
-from utils.scraping import get_indices_data, get_historical_data
+from utils.scraping import get_indices_data, get_historical_data, get_cache_info
 
 # Configuration de la page
 st.set_page_config(
@@ -30,24 +30,101 @@ st.markdown(f"""
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         margin: 10px 0;
     }}
-    .status-ok {{ color: green; font-weight: bold; }}
-    .status-error {{ color: red; font-weight: bold; }}
+    .sidebar-metric {{
+        background: {config.PRIMARY};
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 10px 0;
+    }}
+    .sidebar-metric label {{
+        color: #E0E0E0;
+        font-size: 0.9em;
+    }}
+    .sidebar-metric value {{
+        color: white;
+        font-size: 1.3em;
+        font-weight: bold;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
-# Header
+# ────────────────────────────────────────────
+# SIDEBAR - NIVEAUX DES INDICES
+# ────────────────────────────────────────────
+with st.sidebar:
+    st.markdown(f"### 📊 {config.APP_NAME}")
+    
+    st.divider()
+    
+    # Récupération des données indices
+    indices_data = get_indices_data()
+    
+    # Affichage MASI
+    st.markdown("##### 🇲🇦 MASI")
+    if indices_data and 'MASI' in indices_data:
+        masi = indices_data['MASI']
+        st.markdown(f"""
+            <div class='sidebar-metric'>
+                <label>Niveau</label><br>
+                <value>{masi['niveau']:,.2f} pts</value><br>
+                <small style='color: {"#4CAF50" if "+" in masi["variation"] else "#F44336"}'>
+                    {masi['variation']}
+                </small>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.warning("Données non disponibles")
+    
+    # Affichage MASI20
+    st.markdown("##### 🇲🇦 MASI20")
+    if indices_data and 'MASI20' in indices_data:
+        masi20 = indices_data['MASI20']
+        st.markdown(f"""
+            <div class='sidebar-metric'>
+                <label>Niveau</label><br>
+                <value>{masi20['niveau']:,.2f} pts</value><br>
+                <small style='color: {"#4CAF50" if "+" in masi20["variation"] else "#F44336"}'>
+                    {masi20['variation']}
+                </small>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.warning("Données non disponibles")
+    
+    st.divider()
+    
+    # Informations cache
+    cache_info = get_cache_info()
+    st.caption(f"🔄 Cache: {cache_info['cache_age']} (max {cache_info['duration_minutes']} min)")
+    
+    # Bouton refresh manuel
+    if st.button("🔄 Actualiser les données", use_container_width=True):
+        st.cache_resource.clear()
+        st.rerun()
+    
+    st.divider()
+    
+    # Navigation
+    st.markdown("##### 🧭 Navigation")
+    
+    # Menu de navigation
+    page = st.radio(
+        "Pages",
+        ["🏠 Accueil", "📊 Indices & Historique", "🧮 Pricing"],
+        label_visibility="collapsed"
+    )
+
+# ────────────────────────────────────────────
+# HEADER PRINCIPAL
+# ────────────────────────────────────────────
 st.title(f"📈 {config.APP_NAME}")
 st.caption(f"Version {config.APP_VERSION} — Données Bourse de Casablanca")
 
 # ────────────────────────────────────────────
-# TABS DE NAVIGATION
+# PAGE 1 : ACCUEIL
 # ────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(["🏠 Accueil", "📊 Indices Live", "🧮 Pricing", "📈 Historique"])
-
-# ────────────────────────────────────────────
-# TAB 1 : ACCUEIL
-# ────────────────────────────────────────────
-with tab1:
+if page == "🏠 Accueil":
     st.header("🎯 Bienvenue sur MASI Futures")
     
     st.markdown(f"""
@@ -77,83 +154,127 @@ with tab1:
     
     with col1:
         st.info("""
-        **1️⃣ Onglet "Indices Live"**
-        - Voir les niveaux actuels
-        - Variations journalières
-        - Statut du scraping
+        **1️⃣ Sidebar**
+        - Voir les niveaux MASI/MASI20
+        - Actualiser manuellement
+        - Statut du cache
         """)
     
     with col2:
         st.info("""
-        **2️⃣ Onglet "Pricing"**
+        **2️⃣ Onglet "Indices"**
+        - Données complètes des indices
+        - Historique et graphiques
+        - Caractéristiques contrats
+        """)
+    
+    with col3:
+        st.info("""
+        **3️⃣ Onglet "Pricing"**
         - Calculer le prix théorique
         - Ajuster r, q, T
         - Voir la valeur notionnelle
         """)
     
-    with col3:
-        st.info("""
-        **3️⃣ Onglet "Historique"**
-        - Graphique d'évolution
-        - Tendances récentes
-        - Export des données
-        """)
-
-# ────────────────────────────────────────────
-# TAB 2 : INDICES LIVE (SCRAPPING)
-# ────────────────────────────────────────────
-with tab2:
-    st.header("📊 Indices MASI & MASI20 - Temps Réel")
+    # Statut du scraping
+    st.divider()
+    st.subheader("🔧 Statut du Système")
     
-    # Bouton pour forcer la mise à jour
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.caption("🔄 Données mises à jour automatiquement toutes les 5 minutes")
-    with col2:
-        if st.button("🔄 Actualiser", use_container_width=True):
-            st.cache_resource.clear()
-            st.rerun()
-    
-    # Récupération des données
-    with st.spinner("Chargement des données..."):
-        indices_data = get_indices_data()
-    
-    # Affichage du statut
     if indices_data:
         st.success("✅ Connexion Bourse de Casablanca : OK")
     else:
-        st.error("❌ Connexion échouée - Mode dégradé activé")
+        st.warning("⚠️ Mode dégradé - Données mockées utilisées")
+    
+    st.caption(f"Dernière mise à jour: {indices_data['MASI']['timestamp'] if indices_data else 'N/A'}")
+
+# ────────────────────────────────────────────
+# PAGE 2 : INDICES & HISTORIQUE (Fusionné)
+# ────────────────────────────────────────────
+elif page == "📊 Indices & Historique":
+    st.header("📊 Indices MASI & MASI20")
+    
+    # Sélecteur d'indice
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        indice_choisi = st.selectbox("Sélectionnez un indice", ["MASI", "MASI20"])
+    with col2:
+        jours = st.slider("Jours d'historique", 10, 90, 30)
+    
+    # Affichage des métriques principales
+    st.divider()
+    
+    if indices_data:
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # MASI
+        masi = indices_data.get('MASI', {})
+        col1.metric(
+            label="🇲🇦 MASI",
+            value=f"{masi.get('niveau', 0):,.2f} pts",
+            delta=masi.get('variation', 'N/A')
+        )
+        
+        # MASI20
+        masi20 = indices_data.get('MASI20', {})
+        col2.metric(
+            label="🇲🇦 MASI20",
+            value=f"{masi20.get('niveau', 0):,.2f} pts",
+            delta=masi20.get('variation', 'N/A')
+        )
+        
+        # Timestamp
+        col3.metric(
+            label="🕐 Dernière MAJ",
+            value=masi.get('timestamp', 'N/A').split(' ')[1] if masi else 'N/A',
+            delta=None
+        )
+        
+        # Statut cache
+        cache_info = get_cache_info()
+        col4.metric(
+            label="💾 Cache",
+            value=f"{cache_info['cache_age']}",
+            delta=f"Max {cache_info['duration_minutes']} min"
+        )
+    else:
+        st.warning("Données non disponibles")
     
     st.divider()
     
-    # Affichage des indices
-    col1, col2 = st.columns(2)
+    # Graphique historique
+    st.subheader(f"📈 Évolution de l'indice {indice_choisi}")
     
-    with col1:
-        st.subheader("🇲🇦 MASI")
-        if indices_data and 'MASI' in indices_data:
-            masi = indices_data['MASI']
-            st.metric(
-                label="Niveau",
-                value=f"{masi['niveau']:,.2f} pts",
-                delta=masi['variation']
-            )
-            st.caption(f"Dernière MAJ: {masi['timestamp']}")
-        else:
-            st.warning("Données non disponibles")
+    hist_data = get_historical_data(indice_choisi, jours)
     
-    with col2:
-        st.subheader("🇲🇦 MASI20")
-        if indices_data and 'MASI20' in indices_data:
-            masi20 = indices_data['MASI20']
-            st.metric(
-                label="Niveau",
-                value=f"{masi20['niveau']:,.2f} pts",
-                delta=masi20['variation']
-            )
-            st.caption(f"Dernière MAJ: {masi20['timestamp']}")
-        else:
-            st.warning("Données non disponibles")
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=hist_data['Date'],
+        y=hist_data[f'{indice_choisi}_Close'],
+        name=indice_choisi,
+        line=dict(color=config.PRIMARY, width=2)
+    ))
+    
+    fig.update_layout(
+        title=f'Évolution de l\'indice {indice_choisi} sur {jours} jours',
+        xaxis_title='Date',
+        yaxis_title='Niveau (points)',
+        hovermode='x unified',
+        height=500,
+        template='plotly_white'
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Statistiques
+    st.subheader("📊 Statistiques")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Dernier cours", f"{hist_data[f'{indice_choisi}_Close'].iloc[-1]:,.2f}")
+    col2.metric("Plus haut", f"{hist_data[f'{indice_choisi}_Close'].max():,.2f}")
+    col3.metric("Plus bas", f"{hist_data[f'{indice_choisi}_Close'].min():,.2f}")
+    variation_totale = ((hist_data[f'{indice_choisi}_Close'].iloc[-1] / hist_data[f'{indice_choisi}_Close'].iloc[0]) - 1) * 100
+    col4.metric("Variation totale", f"{variation_totale:+.2f}%")
     
     st.divider()
     
@@ -181,15 +302,14 @@ with tab2:
     st.dataframe(specs, hide_index=True, use_container_width=True)
 
 # ────────────────────────────────────────────
-# TAB 3 : PRICING
+# PAGE 3 : PRICING
 # ────────────────────────────────────────────
-with tab3:
+elif page == "🧮 Pricing":
     st.header("🧮 Calculateur de Prix Future")
     
     st.markdown("### Formule : $F_0 = S_0 \\times e^{(r-q)T}$")
     
     # Récupérer le spot depuis le scraping (ou manuel)
-    indices_data = get_indices_data()
     spot_defaut = 12000.0
     
     if indices_data and 'MASI' in indices_data:
@@ -254,48 +374,7 @@ with tab3:
     """)
 
 # ────────────────────────────────────────────
-# TAB 4 : HISTORIQUE
-# ────────────────────────────────────────────
-with tab4:
-    st.header("📈 Historique des Indices")
-    
-    indice_choisi = st.selectbox("Sélectionnez un indice", ["MASI", "MASI20"])
-    jours = st.slider("Nombre de jours", 10, 90, 30)
-    
-    # Récupération des données historiques
-    hist_data = get_historical_data(indice_choisi, jours)
-    
-    # Graphique
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=hist_data['Date'],
-        y=hist_data[f'{indice_choisi}_Close'],
-        name=f'{indice_choisi}',
-        line=dict(color=config.PRIMARY, width=2)
-    ))
-    
-    fig.update_layout(
-        title=f'Évolution de l\'indice {indice_choisi} sur {jours} jours',
-        xaxis_title='Date',
-        yaxis_title='Niveau (points)',
-        hovermode='x unified',
-        height=500
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Statistiques
-    st.subheader("📊 Statistiques")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Dernier cours", f"{hist_data[f'{indice_choisi}_Close'].iloc[-1]:,.2f}")
-    col2.metric("Plus haut", f"{hist_data[f'{indice_choisi}_Close'].max():,.2f}")
-    col3.metric("Plus bas", f"{hist_data[f'{indice_choisi}_Close'].min():,.2f}")
-    col4.metric("Variation totale", f"{((hist_data[f'{indice_choisi}_Close'].iloc[-1] / hist_data[f'{indice_choisi}_Close'].iloc[0]) - 1) * 100:+.2f}%")
-
-# ────────────────────────────────────────────
 # FOOTER
 # ────────────────────────────────────────────
 st.divider()
-st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping Bourse de Casablanca")
+st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
