@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import config
-from utils.calculations import (prix_future_theorique, valeur_notionnelle, jours_vers_annees,nombre_contrats_couverture, simulation_couverture,cout_de_portage, prime_future, detecter_arbitrage )
+from utils.calculations import (prix_future_theorique, valeur_notionnelle, jours_vers_annees,nombre_contrats_couverture, simulation_couverture, cout_de_portage, prime_future, detecter_arbitrage, calcul_marge_initiale, calcul_marge_maintenance, calcul_appel_marge, simulation_marging_to_market, analyser_risque_marge)
 from utils.scraping import get_indices_data, get_historical_data, get_cache_info  
 
 # Configuration de la page
@@ -108,10 +108,11 @@ with st.sidebar:
     st.markdown("##### 🧭 Navigation")
     
     # Menu de navigation
+  
     page = st.radio(
-        "Pages",
-        ["🏠 Accueil", "📊 Indices & Historique", "🧮 Pricing", "🛡️ Couverture"],
-        label_visibility="collapsed"
+       "Pages",
+       ["🏠 Accueil", "📊 Indices & Historique", "🧮 Pricing", "🛡️ Couverture", "⚠️ Marges"],  # ← Ajouté
+       label_visibility="collapsed"
     )
 
 # ────────────────────────────────────────────
@@ -689,11 +690,307 @@ elif page == "🛡️ Couverture":
         Valeur finale : 16 000 000 MAD ✅
         ```
         """)
+
+# ────────────────────────────────────────────
+# PAGE 5 : GESTION DES MARGES (§5 du document)
+# ────────────────────────────────────────────
+elif page == "⚠️ Marges":
+    st.markdown("## ⚠️ Gestion des Marges et Appels de Marge")
+    
+    st.markdown("""
+    ### 📋 Mécanisme des Appels de Marge (Document §5.1)
+    
+    ```
+    Marge Initiale (10%) → Position ouverte
+             ↓
+    Chaque jour : Ajustement gains/pertes (marking-to-market)
+             ↓
+    Si Solde < Marge Maintenance (75%) → APPEL DE MARGE
+             ↓
+    Si non honoré → Clôture automatique de la position
+    ```
+    
+    **Objectif :** Réduire le risque de contrepartie en réglant les pertes progressivement.
+    """)
+    
+    st.divider()
+    
+    # ────────────────────────────────────────
+    # INPUTS
+    # ────────────────────────────────────────
+    st.markdown("### 🔧 Paramètres de la Position")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        prix_entree = st.number_input(
+            "Prix d'entrée (points)",
+            min_value=1000.0,
+            value=12000.0,
+            step=100.0
+        )
+        n_contrats = st.number_input(
+            "Nombre de contrats",
+            min_value=1,
+            max_value=1000,
+            value=10,
+            step=1
+        )
+        
+    with col2:
+        multiplicateur = st.number_input(
+            "Multiplicateur (MAD/point)",
+            min_value=1,
+            value=config.MULTIPLICATEUR,
+            step=1
+        )
+        volatilite = st.slider(
+            "Volatilité journalière (%)",
+            min_value=0.5,
+            max_value=5.0,
+            value=1.5,
+            step=0.1
+        ) / 100
+        
+    with col3:
+        n_jours = st.slider(
+            "Nombre de jours",
+            min_value=5,
+            max_value=60,
+            value=20,
+            step=1
+        )
+        marge_init_pct = st.slider(
+            "Marge initiale (%)",
+            min_value=5,
+            max_value=20,
+            value=10,
+            step=1
+        )
+    
+    # ────────────────────────────────────────
+    # CALCULS
+    # ────────────────────────────────────────
+    valeur_notionnelle = prix_entree * n_contrats * multiplicateur
+    marge_initiale = calcul_marge_initiale(valeur_notionnelle, marge_init_pct)
+    marge_maintenance = calcul_marge_maintenance(marge_initiale, 75)
+    
+    # Simulation
+    with st.spinner("Simulation en cours..."):
+        simulation = simulation_marging_to_market(
+            prix_initial=prix_entree,
+            n_contrats=n_contrats,
+            multiplicateur=multiplicateur,
+            n_jours=n_jours,
+            volatilite_journaliere=volatilite,
+            marge_initiale_pct=marge_init_pct,
+            seed=42  # Pour reproductibilité
+        )
+    
+    # Analyse de risque
+    risque = analyser_risque_marge(simulation)
+    
+    # ────────────────────────────────────────
+    # RÉSUMÉ EXÉCUTIF
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 📊 Résumé de la Position")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Valeur Notionnelle</label>
+                <value>{valeur_notionnelle:,.0f}</value>
+                <small style='color: #6B7280;'>MAD</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Marge Initiale</label>
+                <value>{marge_initiale:,.0f}</value>
+                <small style='color: #6B7280;'>{marge_init_pct}%</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Marge Maintenance</label>
+                <value>{marge_maintenance:,.0f}</value>
+                <small style='color: #6B7280;'>75% initiale</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        couleur_risque = "#10B981" if risque['risque'] == 'Faible' else "#F59E0B" if risque['risque'] == 'Moyen' else "#EF4444"
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Risque d'Appel</label>
+                <value style='color: {couleur_risque};'>{risque['risque']}</value>
+                <small style='color: #6B7280;'>{risque['nombre_appels']} appels</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # ────────────────────────────────────────
+    # GRAPHIQUE PRINCIPAL
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 📈 Simulation du Marking-to-Market")
+    
+    df = simulation['df']
+    
+    fig = go.Figure()
+    
+    # Solde du compte
+    fig.add_trace(go.Scatter(
+        x=df['Jour'],
+        y=df['Solde_Compte'],
+        name='Solde du Compte',
+        line=dict(color='#1E3A5F', width=3),
+        fill='tozeroy',
+        fillcolor='rgba(30, 58, 95, 0.1)'
+    ))
+    
+    # Lignes de seuil
+    fig.add_hline(
+        y=marge_initiale,
+        line_dash='dash',
+        line_color='#10B981',
+        annotation_text='Marge Initiale',
+        annotation_position='top right'
+    )
+    
+    fig.add_hline(
+        y=marge_maintenance,
+        line_dash='dash',
+        line_color='#EF4444',
+        annotation_text='Marge Maintenance',
+        annotation_position='top right'
+    )
+    
+    # Annotations des appels de marge
+    for appel in simulation['appels_marge']:
+        fig.add_vline(
+            x=appel['jour'],
+            line_dash='dot',
+            line_color='#F59E0B',
+            annotation_text=f'Appel: {appel["montant"]:,.0f} MAD',
+            annotation_position='bottom'
+        )
+    
+    fig.update_layout(
+        title='Évolution du Solde de Marge sur la Période',
+        xaxis_title='Jour',
+        yaxis_title='Solde (MAD)',
+        hovermode='x unified',
+        height=500,
+        template='plotly_white',
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # ────────────────────────────────────────
+    # DÉTAILS DES APPELS DE MARGE
+    # ────────────────────────────────────────
+    st.divider()
+    
+    if simulation['appels_marge']:
+        st.markdown(f"### ⚠️ Appels de Marge Détectés ({len(simulation['appels_marge'])})")
+        
+        for appel in simulation['appels_marge']:
+            st.markdown(f"""
+                <div class='warning-box'>
+                    <strong>Jour {appel['jour']}</strong><br>
+                    Montant d'appel : <strong>{appel['montant']:,.0f} MAD</strong><br>
+                    Solde avant appel : {appel['solde_avant']:,.0f} MAD<br>
+                    Prix MASI : {appel['prix']:,.0f} pts
+                </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown(f"""
+            <div class='info-box'>
+                <strong>💡 Total déposé :</strong> {simulation['total_depose']:,.0f} MAD<br>
+                <strong>💡 P&L total :</strong> {simulation['pnl_total']:+,.0f} MAD
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+            <div class='success-box'>
+                <strong>✅ Aucun appel de marge</strong> sur la période simulée.<br>
+                Le solde est resté au-dessus du seuil de maintenance ({marge_maintenance:,.0f} MAD).
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # ────────────────────────────────────────
+    # TABLEAU DÉTAILLÉ
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 📋 Historique Jour par Jour")
+    
+    with st.expander("Voir le tableau détaillé"):
+        df_affichage = df.copy()
+        df_affichage['Variation'] = df_affichage['Solde_Compte'].diff()
+        df_affichage['Statut'] = df_affichage['Solde_Compte'].apply(
+            lambda x: '⚠️ Appel' if x < marge_maintenance else '✅ OK'
+        )
+        st.dataframe(
+            df_affichage.style.format({
+                'Prix_MASI': '{:,.0f}',
+                'Solde_Compte': '{:,.0f}',
+                'Marge_Initiale': '{:,.0f}',
+                'Marge_Maintenance': '{:,.0f}',
+                'Variation': '{:+,.0f}'
+            }),
+            use_container_width=True
+        )
+    
+    # ────────────────────────────────────────
+    # RECOMMANDATIONS
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 💡 Recommandations de Gestion")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+        **📊 Analyse de Risque :**
+        - Risque d'appel de marge : **{risque['risque']}**
+        - Probabilité estimée : **{risque['proba_appel']*100:.1f}%**
+        - Distance au seuil critique : **{risque['distance_seuil']:+.1f}%**
+        - Solde minimum atteint : **{risque['solde_min']:,.0f} MAD**
+        """)
+    
+    with col2:
+        st.markdown(f"""
+        **💰 Gestion de Trésorerie :**
+        - Capital initial requis : **{marge_initiale:,.0f} MAD**
+        - Total déposé (avec appels) : **{simulation['total_depose']:,.0f} MAD**
+        - P&L total de la position : **{simulation['pnl_total']:+,.0f} MAD**
+        - Marge maintenance : **{marge_maintenance:,.0f} MAD**
+        """)
+    
+    # Info box pédagogique
+    st.markdown("""
+        <div class='info-box'>
+            <strong>💡 Le saviez-vous ?</strong><br>
+            Le système de marges (marking-to-market) assure le bon fonctionnement du marché des futures 
+            en garantissant que les engagements financiers puissent être honorés en permanence. 
+            Si un investisseur ne répond pas à un appel de marge, sa position est automatiquement clôturée 
+            par l'intermédiaire afin de limiter les pertes potentielles (Document §5.1).
+        </div>
+    """, unsafe_allow_html=True)
 # ────────────────────────────────────────────
 # FOOTER
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
 
 
 
