@@ -203,3 +203,183 @@ def points_vers_mad(points, multiplicateur=10):
 def mad_vers_points(mad, multiplicateur=10):
     """Conversion MAD → points d'indice"""
     return mad / multiplicateur
+
+# ────────────────────────────────────────────
+# 6. GESTION DES MARGES (§5 du document)
+# ────────────────────────────────────────────
+
+def calcul_marge_initiale(valeur_notionnelle, pourcentage=10):
+    """
+    Calcule la marge initiale requise (§5.1)
+    Typique: 10% de la valeur notionnelle
+    
+    Args:
+        valeur_notionnelle: Valeur totale du contrat (MAD)
+        pourcentage: Pourcentage de marge initiale (défaut: 10%)
+    
+    Returns:
+        Marge initiale en MAD
+    """
+    return valeur_notionnelle * (pourcentage / 100)
+
+def calcul_marge_maintenance(marge_initiale, pourcentage=75):
+    """
+    Calcule le seuil de marge de maintenance (§5.1)
+    Typique: 75% de la marge initiale
+    
+    Args:
+        marge_initiale: Marge initiale déposée (MAD)
+        pourcentage: Pourcentage de maintenance (défaut: 75%)
+    
+    Returns:
+        Seuil de maintenance en MAD
+    """
+    return marge_initiale * (pourcentage / 100)
+
+def calcul_appel_marge(solde_actuel, marge_maintenance, marge_initiale):
+    """
+    Calcule le montant d'appel de marge si nécessaire (§5.1)
+    
+    Args:
+        solde_actuel: Solde actuel du compte (MAD)
+        marge_maintenance: Seuil de maintenance (MAD)
+        marge_initiale: Marge initiale requise (MAD)
+    
+    Returns:
+        Montant d'appel de marge (0 si aucun appel nécessaire)
+    """
+    if solde_actuel < marge_maintenance:
+        return marge_initiale - solde_actuel
+    return 0
+
+def simulation_marging_to_market(
+    prix_initial, 
+    n_contrats, 
+    multiplicateur, 
+    n_jours, 
+    volatilite_journaliere=0.015,
+    marge_initiale_pct=10,
+    marge_maintenance_pct=75,
+    seed=None
+):
+    """
+    Simule le marking-to-market sur N jours (§5.1)
+    
+    Args:
+        prix_initial: Prix d'entrée sur le future (points)
+        n_contrats: Nombre de contrats
+        multiplicateur: Valeur par point (MAD)
+        n_jours: Nombre de jours de simulation
+        volatilite_journaliere: Volatilité quotidienne (défaut: 1.5%)
+        marge_initiale_pct: Pourcentage marge initiale
+        marge_maintenance_pct: Pourcentage marge maintenance
+        seed: Seed pour reproductibilité
+    
+    Returns:
+        DataFrame avec l'historique jour par jour
+    """
+    import numpy as np
+    import pandas as pd
+    
+    if seed:
+        np.random.seed(seed)
+    
+    # Calcul des marges
+    valeur_notionnelle = prix_initial * n_contrats * multiplicateur
+    marge_initiale = calcul_marge_initiale(valeur_notionnelle, marge_initiale_pct)
+    marge_maintenance = calcul_marge_maintenance(marge_initiale, marge_maintenance_pct)
+    
+    # Génération des prix simulés
+    prix = [prix_initial]
+    for _ in range(n_jours):
+        variation = np.random.normal(0, volatilite_journaliere)
+        prix.append(prix[-1] * (1 + variation))
+    prix = prix[1:]  # Enlever la valeur initiale dupliquée
+    
+    # Calcul du solde jour par jour
+    solde = [marge_initiale]
+    appels_marge = []
+    total_depose = marge_initiale
+    total_retire = 0
+    
+    for i in range(n_jours):
+        # P&L du jour (position longue)
+        pnl = n_contrats * (prix[i] - (prix[i-1] if i>0 else prix_initial)) * multiplicateur
+        nouveau_solde = solde[-1] + pnl
+        
+        # Vérification appel de marge
+        appel = 0
+        if nouveau_solde < marge_maintenance:
+            appel = marge_initiale - nouveau_solde
+            nouveau_solde = marge_initiale  # Reconstitution
+            total_depose += appel
+            appels_marge.append({
+                'jour': i+1,
+                'montant': appel,
+                'solde_avant': solde[-1],
+                'prix': prix[i]
+            })
+        
+        # Possibilité de retirer l'excédent (optionnel)
+        retrait = 0
+        if nouveau_solde > marge_initiale * 1.5:
+            retrait = nouveau_solde - marge_initiale
+            nouveau_solde = marge_initiale
+            total_retire += retrait
+        
+        solde.append(nouveau_solde)
+    
+    # Création du DataFrame
+    df = pd.DataFrame({
+        'Jour': range(n_jours + 1),
+        'Prix_MASI': [prix_initial] + prix,
+        'Solde_Compte': solde,
+        'Marge_Initiale': [marge_initiale] * (n_jours + 1),
+        'Marge_Maintenance': [marge_maintenance] * (n_jours + 1)
+    })
+    
+    return {
+        'df': df,
+        'marge_initiale': marge_initiale,
+        'marge_maintenance': marge_maintenance,
+        'appels_marge': appels_marge,
+        'total_depose': total_depose,
+        'total_retire': total_retire,
+        'pnl_total': solde[-1] - marge_initiale
+    }
+
+def analyser_risque_marge(simulation_result, niveau_confiance=0.95):
+    """
+    Analyse le risque d'appel de marge à partir d'une simulation
+    
+    Args:
+        simulation_result: Résultat de simulation_marging_to_market()
+        niveau_confiance: Niveau de confiance pour l'analyse
+    
+    Returns:
+        Dict avec les métriques de risque
+    """
+    df = simulation_result['df']
+    solde_min = df['Solde_Compte'].min()
+    solde_max = df['Solde_Compte'].max()
+    solde_mean = df['Solde_Compte'].mean()
+    
+    marge_maint = simulation_result['marge_maintenance']
+    marge_init = simulation_result['marge_initiale']
+    
+    # Probabilité d'appel de marge (estimation)
+    jours_sous_maintenance = (df['Solde_Compte'] < marge_maint).sum()
+    proba_appel = jours_sous_maintenance / len(df)
+    
+    # Distance au seuil critique
+    distance_seuil = (solde_min - marge_maint) / marge_init * 100
+    
+    return {
+        'solde_min': solde_min,
+        'solde_max': solde_max,
+        'solde_mean': solde_mean,
+        'proba_appel': proba_appel,
+        'distance_seuil': distance_seuil,
+        'nombre_appels': len(simulation_result['appels_marge']),
+        'risque': 'Élevé' if proba_appel > 0.3 else 'Moyen' if proba_appel > 0.1 else 'Faible'
+    }
