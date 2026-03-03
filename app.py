@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import config
-from utils.calculations import (prix_future_theorique, valeur_notionnelle, jours_vers_annees,nombre_contrats_couverture, simulation_couverture, cout_de_portage, prime_future, detecter_arbitrage, calcul_marge_initiale, calcul_marge_maintenance, calcul_appel_marge, simulation_marging_to_market, analyser_risque_marge)
+from utils.calculations import (prix_future_theorique, valeur_notionnelle, jours_vers_annees,nombre_contrats_couverture, simulation_couverture,cout_de_portage,prime_future,detecter_arbitrage,calcul_marge_initiale,calcul_marge_maintenance,calcul_appel_marge,simulation_marging_to_market, analyser_risque_marge, calcul_var_parametrique, calcul_var_historique, calcul_cvar, stress_testing, calcul_delta_equivalent, analyser_risque_complet )
 from utils.scraping import get_indices_data, get_historical_data, get_cache_info  
 
 # Configuration de la page
@@ -109,10 +109,11 @@ with st.sidebar:
     
     # Menu de navigation
   
+    # Menu de navigation (mettre à jour)
     page = st.radio(
-       "Pages",
-       ["🏠 Accueil", "📊 Indices & Historique", "🧮 Pricing", "🛡️ Couverture", "⚠️ Marges"],  # ← Ajouté
-       label_visibility="collapsed"
+        "Pages",
+        ["🏠 Accueil", "📊 Indices & Historique", "🧮 Pricing", "🛡️ Couverture", "⚠️ Marges", "📈 Risk Dashboard"],  # ← Ajouté
+        label_visibility="collapsed"
     )
 
 # ────────────────────────────────────────────
@@ -985,11 +986,363 @@ elif page == "⚠️ Marges":
             par l'intermédiaire afin de limiter les pertes potentielles (Document §5.1).
         </div>
     """, unsafe_allow_html=True)
+
+# ────────────────────────────────────────────
+# PAGE 6 : RISK DASHBOARD (§1.2 du document)
+# ────────────────────────────────────────────
+elif page == "📈 Risk Dashboard":
+    st.markdown("## 📈 Risk Dashboard — Gestion du Risque de Marché")
+    
+    st.markdown("""
+    ### 🎯 Objectif (Document §1.2)
+    
+    Les contrats futures permettent d'**ajuster rapidement le niveau de risque actions** 
+    sans modifier la composition du portefeuille, et contribuent à améliorer la 
+    mesure des risques via :
+    
+    - ✅ Le **delta équivalent indice**
+    - ✅ La **VaR consolidée**
+    - ✅ Les analyses de **stress testing**
+    """)
+    
+    st.divider()
+    
+    # ────────────────────────────────────────
+    # INPUTS
+    # ────────────────────────────────────────
+    st.markdown("### 🔧 Paramètres du Portefeuille")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        portefeuille_value = st.number_input(
+            "Valeur du portefeuille (MAD)",
+            min_value=100_000,
+            value=16_000_000,
+            step=100_000
+        )
+        beta = st.slider(
+            "Bêta du portefeuille (β)",
+            min_value=0.0,
+            max_value=3.0,
+            value=1.5,
+            step=0.1,
+            help="Sensibilité aux variations du MASI"
+        )
+        
+    with col2:
+        volatilite = st.slider(
+            "Volatilité annuelle estimée (%)",
+            min_value=5.0,
+            max_value=40.0,
+            value=18.0,
+            step=1.0,
+            help="Volatilité historique typique du MASI: ~18%"
+        ) / 100
+        niveau_confiance = st.selectbox(
+            "Niveau de confiance VaR",
+            [0.95, 0.99],
+            format_func=lambda x: f"{x*100:.0f}%"
+        )
+        
+    with col3:
+        horizon = st.selectbox(
+            "Horizon de calcul",
+            [1, 5, 10, 21],
+            format_func=lambda x: f"{x} jour(s)"
+        )
+        niveau_indice = st.number_input(
+            "Niveau MASI actuel (points)",
+            min_value=1000.0,
+            value=12000.0,
+            step=100.0
+        )
+    
+    # ────────────────────────────────────────
+    # CALCULS
+    # ────────────────────────────────────────
+    # Génération de rendements historiques simulés pour la VaR historique
+    np.random.seed(42)
+    n_observations = 252  # 1 an de données journalières
+    returns_simules = np.random.normal(0.0003, volatilite/np.sqrt(252), n_observations)
+    
+    # Analyse complète
+    with st.spinner("Calcul des métriques de risque..."):
+        risk_analysis = analyser_risque_complet(
+            portefeuille_value=portefeuille_value,
+            beta=beta,
+            volatilite_annuelle=volatilite,
+            returns_historiques=returns_simules,
+            niveau_indice=niveau_indice
+        )
+    
+    # ────────────────────────────────────────
+    # SYNTHÈSE DU RISQUE
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 🎯 Synthèse du Risque")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Risque Global</label>
+                <value style='font-size: 1.4em;'>{risk_analysis['risque_global']}</value>
+                <small style='color: #6B7280;'>Évaluation globale</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>VaR 95% ({horizon}j)</label>
+                <value>{risk_analysis['var_95_10j' if horizon==10 else 'var_95_1j']:,.0f}</value>
+                <small style='color: #6B7280;'>MAD</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>CVaR 95%</label>
+                <value>{risk_analysis['cvar_95']:,.0f}</value>
+                <small style='color: #6B7280;'>MAD</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Delta Équivalent</label>
+                <value>{risk_analysis['delta_equivalent']:,.0f}</value>
+                <small style='color: #6B7280;'>points MASI</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # ────────────────────────────────────────
+    # VAŘ PARAMÉTRIQUE vs HISTORIQUE
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 📊 Value at Risk (VaR) — Comparaison des Méthodes")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+            <div class='info-box'>
+                <strong>📐 VaR Paramétrique ({niveau_confiance*100:.0f}%, {horizon}j)</strong><br>
+                Hypothèse: distribution normale des rendements<br><br>
+                • Volatilité annuelle: {volatilite*100:.1f}%<br>
+                • Z-score: {1.645 if niveau_confiance==0.95 else 2.326:.3f}<br>
+                • <strong>VaR estimée: {risk_analysis[f'var_{int(niveau_confiance*100)}_{horizon}j' if horizon in [1,10] else 'var_95_1j']:,.0f} MAD</strong><br>
+                • Soit {risk_analysis[f'var_{int(niveau_confiance*100)}_{horizon}j' if horizon in [1,10] else 'var_95_1j']/portefeuille_value*100:.2f}% du portefeuille
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div class='info-box'>
+                <strong>📈 VaR Historique ({niveau_confiance*100:.0f}%)</strong><br>
+                Basée sur {n_observations} observations simulées<br><br>
+                • Méthode: percentile des rendements passés<br>
+                • <strong>VaR historique: {risk_analysis['var_hist_95']:,.0f} MAD</strong><br>
+                • CVaR (Expected Shortfall): {risk_analysis['cvar_95']:,.0f} MAD<br>
+                • Perte moyenne au-delà de la VaR
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Graphique de distribution des rendements
+    st.markdown("#### 📉 Distribution des Rendements Simulés")
+    
+    fig_dist = go.Figure()
+    
+    fig_dist.add_trace(go.Histogram(
+        x=returns_simules * 100,  # Conversion en %
+        nbinsx=50,
+        name='Rendements journaliers',
+        marker_color='#1E3A5F',
+        opacity=0.7
+    ))
+    
+    # Lignes VaR
+    var_95_pct = np.percentile(returns_simules, 5) * 100
+    fig_dist.add_vline(
+        x=var_95_pct,
+        line_dash='dash',
+        line_color='#EF4444',
+        annotation_text=f'VaR 95%: {var_95_pct:.2f}%',
+        annotation_position='top'
+    )
+    
+    fig_dist.update_layout(
+        title='Distribution des Rendements Journaliers Simulés',
+        xaxis_title='Rendement (%)',
+        yaxis_title='Fréquence',
+        height=400,
+        template='plotly_white',
+        bargap=0.1
+    )
+    
+    st.plotly_chart(fig_dist, use_container_width=True)
+    
+    # ────────────────────────────────────────
+    # STRESS TESTING
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 🌪️ Stress Testing — Scénarios de Crise")
+    
+    stress_df = risk_analysis['stress']
+    
+    # Affichage sous forme de cards
+    for _, row in stress_df.iterrows():
+        couleur = "#EF4444" if "Élevé" in row['Niveau de Risque'] else "#F59E0B" if "Moyen" in row['Niveau de Risque'] else "#10B981"
+        st.markdown(f"""
+            <div class='metric-card' style='border-left-color: {couleur};'>
+                <div style='display: flex; justify-content: space-between; align-items: center;'>
+                    <div>
+                        <label style='color: {couleur}; font-weight: 600;'>{row['Scénario']}</label><br>
+                        <small>Variation indice: <strong>{row['Variation Indice (%)']:+.0f}%</strong> | 
+                        Portefeuille: <strong>{row['Variation Portefeuille (%)']:+.1f}%</strong></small>
+                    </div>
+                    <div style='text-align: right;'>
+                        <value style='color: {couleur}; font-size: 1.3em;'>{row['Perte Estimée (MAD)']:,.0f} MAD</value><br>
+                        <small style='color: #6B7280;'>{row['Niveau de Risque']}</small>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Graphique des scénarios
+    fig_stress = go.Figure()
+    
+    fig_stress.add_trace(go.Bar(
+        x=stress_df['Scénario'],
+        y=stress_df['Perte Estimée (MAD)'] / 1_000_000,  # En millions
+        name='Perte Estimée',
+        marker_color=stress_df['Niveau de Risque'].map({
+            '🔴 Élevé': '#EF4444',
+            '🟡 Moyen': '#F59E0B',
+            '🟢 Faible': '#10B981'
+        }),
+        text=stress_df['Perte Estimée (MAD)'].apply(lambda x: f'{x/1_000_000:.1f}M'),
+        textposition='auto'
+    ))
+    
+    fig_stress.update_layout(
+        title='Impact des Scénarios de Stress sur le Portefeuille',
+        xaxis_title='Scénario',
+        yaxis_title='Perte Estimée (Millions MAD)',
+        height=400,
+        template='plotly_white',
+        xaxis_tickangle=-45
+    )
+    
+    st.plotly_chart(fig_stress, use_container_width=True)
+    
+    # ────────────────────────────────────────
+    # DELTA ÉQUIVALENT INDICE
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 📐 Delta Équivalent Indice (§1.2)")
+    
+    delta_equiv = risk_analysis['delta_equivalent']
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+            <div class='info-box'>
+                <strong>🎯 Définition</strong><br>
+                Le delta équivalent représente l'exposition de votre portefeuille 
+                en termes de <strong>points d'indice MASI</strong>.
+                
+                **Formule :**
+                ```
+                Δ = (Valeur Portefeuille × β) / Niveau Indice
+                   = ({portefeuille_value:,.0f} × {beta}) / {niveau_indice:,.0f}
+                   = {delta_equiv:,.0f} points
+                ```
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div class='info-box'>
+                <strong>💡 Interprétation</strong><br>
+                Votre portefeuille réagit comme si vous déteniez 
+                <strong>{delta_equiv:,.0f} points de MASI</strong>.
+                
+                **Implications :**
+                • Pour couvrir ce delta: vendre {round(delta_equiv / 10):,} contrats futures*<br>
+                • *Multiplicateur = 10 MAD/point
+                
+                **Utilisation :**
+                • Ajustement dynamique de l'exposition<br>
+                • Calcul du ratio de couverture optimal<br>
+                • Intégration dans les systèmes de risque
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # ────────────────────────────────────────
+    # RECOMMANDATIONS
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 💡 Recommandations de Gestion du Risque")
+    
+    var_pct = risk_analysis['var_95_1j'] / portefeuille_value * 100
+    
+    if var_pct > 3:
+        st.markdown(f"""
+            <div class='warning-box'>
+                <strong>⚠️ Niveau de risque élevé détecté</strong><br>
+                VaR 95% (1 jour): {risk_analysis['var_95_1j']:,.0f} MAD ({var_pct:.2f}% du portefeuille)<br><br>
+                <strong>Recommandations :</strong>
+                • Envisager une couverture partielle avec des futures MASI<br>
+                • Réduire le bêta du portefeuille via diversification<br>
+                • Surveiller attentivement les indicateurs de marché
+            </div>
+        """, unsafe_allow_html=True)
+    elif var_pct > 1.5:
+        st.markdown(f"""
+            <div class='info-box'>
+                <strong>ℹ️ Niveau de risque modéré</strong><br>
+                VaR 95% (1 jour): {risk_analysis['var_95_1j']:,.0f} MAD ({var_pct:.2f}% du portefeuille)<br><br>
+                <strong>Recommandations :</strong>
+                • Maintenir une surveillance régulière des métriques de risque<br>
+                • Prévoir des scénarios de couverture pour les périodes de volatilité<br>
+                • Documenter les limites de risque internes
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+            <div class='success-box'>
+                <strong>✅ Niveau de risque acceptable</strong><br>
+                VaR 95% (1 jour): {risk_analysis['var_95_1j']:,.0f} MAD ({var_pct:.2f}% du portefeuille)<br><br>
+                <strong>Recommandations :</strong>
+                • Continuer le monitoring régulier<br>
+                • Profiter de la flexibilité pour ajuster l'exposition si opportunité<br>
+                • Documenter les hypothèses de calcul pour audit
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Info box pédagogique
+    st.markdown("""
+        <div class='info-box'>
+            <strong>💡 Le saviez-vous ?</strong><br>
+            L'intégration des futures dans les dispositifs internes de gestion du risque 
+            permet une mesure plus précise de l'exposition globale du portefeuille. 
+            Le delta équivalent indice facilite l'agrégation des risques et le calcul 
+            de la VaR consolidée, conformément aux meilleures pratiques institutionnelles 
+            (Document §1.2).
+        </div>
+    """, unsafe_allow_html=True)
 # ────────────────────────────────────────────
 # FOOTER
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
 
 
 
