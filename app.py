@@ -1,6 +1,5 @@
 # ============================================
 # MASI FUTURES - Application Streamlit
-# Version avec Sidebar et Scraping Optimisé
 # ============================================
 
 import streamlit as st
@@ -9,7 +8,7 @@ import numpy as np
 import plotly.graph_objects as go
 import config
 from utils.calculations import prix_future_theorique, valeur_notionnelle, jours_vers_annees
-from utils.scraping import get_indices_data, get_historical_data, get_cache_info
+from utils.scraping import get_indices_data, get_historical_data, get_cache_info  
 
 # Configuration de la page
 st.set_page_config(
@@ -378,3 +377,4 @@ elif page == "🧮 Pricing":
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
