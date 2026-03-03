@@ -16,7 +16,8 @@ from utils.calculations import (
     cout_de_portage,        # ← NOUVEAU
     prime_future,           # ← NOUVEAU
     detecter_arbitrage      # ← NOUVEAU
-)from utils.scraping import get_indices_data, get_historical_data, get_cache_info  
+)
+from utils.scraping import get_indices_data, get_historical_data, get_cache_info  
 
 # Configuration de la page
 st.set_page_config(
@@ -702,6 +703,7 @@ elif page == "🛡️ Couverture":
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
 
 
 
