@@ -7,16 +7,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import config
-from utils.calculations import (
-    prix_future_theorique, 
-    valeur_notionnelle, 
-    jours_vers_annees,
-    nombre_contrats_couverture, 
-    simulation_couverture,
-    cout_de_portage,        # ← NOUVEAU
-    prime_future,           # ← NOUVEAU
-    detecter_arbitrage      # ← NOUVEAU
-)
+from utils.calculations import (prix_future_theorique, valeur_notionnelle, jours_vers_annees,nombre_contrats_couverture, simulation_couverture,cout_de_portage, prime_future, detecter_arbitrage )
 from utils.scraping import get_indices_data, get_historical_data, get_cache_info  
 
 # Configuration de la page
@@ -703,6 +694,7 @@ elif page == "🛡️ Couverture":
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
 
 
 
