@@ -539,6 +539,41 @@ elif page == "🧮 Pricing":
             ce qui ramènerait les prix à l'équilibre (Document §4.5 & §7.2).
         </div>
     """, unsafe_allow_html=True)
+
+# ────────────────────────────────────────
+# EXPORT PDF
+# ────────────────────────────────────────
+st.divider()
+st.markdown("### 📄 Export PDF")
+
+col1, col2 = st.columns([3, 1])
+with col1:
+    st.caption("Générez un rapport PDF professionnel de vos calculs")
+with col2:
+    if st.button("📄 Exporter PDF", use_container_width=True):
+        from utils.pdf_export import export_pricing_pdf
+        filename = export_pricing_pdf(
+            spot=spot,
+            r=r,
+            q=q,
+            jours=jours,
+            F0=F0,
+            valeur_not=valeur_not,
+            prime=prime,
+            cout_port=cout_port,
+            prix_marche=prix_marche,
+            signal=signal,
+            strategie=strategie
+        )
+        
+        # Lire le fichier et proposer le téléchargement
+        with open(filename, "rb") as pdf_file:
+            st.download_button(
+                label="📥 Télécharger le PDF",
+                data=pdf_file.read(),
+                file_name=filename,
+                mime="application/pdf"
+            )
   
 # ────────────────────────────────────────────
 # PAGE 4 : COUVERTURE (HEDGING) - §6 du document
@@ -691,6 +726,30 @@ elif page == "🛡️ Couverture":
         Valeur finale : 16 000 000 MAD ✅
         ```
         """)
+
+# ────────────────────────────────────────
+# EXPORT PDF
+# ────────────────────────────────────────
+st.divider()
+st.markdown("### 📄 Export PDF")
+
+if st.button("📄 Exporter Rapport de Couverture"):
+    from utils.pdf_export import export_couverture_pdf
+    filename = export_couverture_pdf(
+        portefeuille=portefeuille,
+        beta=beta,
+        spot=spot,
+        N_contrats=N_contrats,
+        result=result
+    )
+    
+    with open(filename, "rb") as pdf_file:
+        st.download_button(
+            label="📥 Télécharger le PDF",
+            data=pdf_file.read(),
+            file_name=filename,
+            mime="application/pdf"
+        )
 
 # ────────────────────────────────────────────
 # PAGE 5 : GESTION DES MARGES (§5 du document)
@@ -986,6 +1045,32 @@ elif page == "⚠️ Marges":
             par l'intermédiaire afin de limiter les pertes potentielles (Document §5.1).
         </div>
     """, unsafe_allow_html=True)
+
+# ────────────────────────────────────────
+# EXPORT PDF
+# ────────────────────────────────────────
+st.divider()
+st.markdown("### 📄 Export PDF")
+
+if st.button("📄 Exporter Rapport de Marges"):
+    from utils.pdf_export import export_marges_pdf
+    filename = export_marges_pdf(
+        prix_entree=prix_entree,
+        n_contrats=n_contrats,
+        multiplicateur=multiplicateur,
+        n_jours=n_jours,
+        marge_initiale=marge_initiale,
+        marge_maintenance=marge_maintenance,
+        simulation=simulation
+    )
+    
+    with open(filename, "rb") as pdf_file:
+        st.download_button(
+            label="📥 Télécharger le PDF",
+            data=pdf_file.read(),
+            file_name=filename,
+            mime="application/pdf"
+        )
 
 # ────────────────────────────────────────────
 # PAGE 6 : RISK DASHBOARD (§1.2 du document)
@@ -1337,11 +1422,35 @@ elif page == "📈 Risk Dashboard":
             (Document §1.2).
         </div>
     """, unsafe_allow_html=True)
+
+# ────────────────────────────────────────
+# EXPORT PDF
+# ────────────────────────────────────────
+st.divider()
+st.markdown("### 📄 Export PDF")
+
+if st.button("📄 Exporter Risk Report"):
+    from utils.pdf_export import export_risk_pdf
+    filename = export_risk_pdf(
+        portefeuille_value=portefeuille_value,
+        beta=beta,
+        volatilite=volatilite,
+        risk_analysis=risk_analysis
+    )
+    
+    with open(filename, "rb") as pdf_file:
+        st.download_button(
+            label="📥 Télécharger le PDF",
+            data=pdf_file.read(),
+            file_name=filename,
+            mime="application/pdf"
+        )
 # ────────────────────────────────────────────
 # FOOTER
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
 
 
 
