@@ -14,3 +14,8 @@ def valeur_notionnelle(prix_future, multiplicateur=10):
 def jours_vers_annees(jours):
     """Conversion jours → années (252 jours de trading)"""
     return jours / 252
+
+def nombre_contrats_couverture(portefeuille, beta, spot, multiplicateur=10):
+    """N* = β × P / A"""
+    A = spot * multiplicateur
+    return round(beta * portefeuille / A)
