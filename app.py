@@ -1,12 +1,15 @@
 # ============================================
-# MASI FUTURES - Application Streamlit Simple
+# MASI FUTURES - Application Streamlit
+# Version avec Scraping Bourse de Casablanca
 # ============================================
 
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 import config
 from utils.calculations import prix_future_theorique, valeur_notionnelle, jours_vers_annees
+from utils.scraping import get_indices_data, get_historical_data
 
 # Configuration de la page
 st.set_page_config(
@@ -15,26 +18,34 @@ st.set_page_config(
     layout="wide"
 )
 
-# Style CSS minimal
+# Style CSS
 st.markdown(f"""
     <style>
     .main {{ background-color: {config.BACKGROUND}; }}
     h1, h2, h3 {{ color: {config.PRIMARY}; }}
-    .metric {{ background: white; padding: 15px; border-radius: 8px; }}
+    .metric-card {{ 
+        background: white; 
+        padding: 20px; 
+        border-radius: 10px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin: 10px 0;
+    }}
+    .status-ok {{ color: green; font-weight: bold; }}
+    .status-error {{ color: red; font-weight: bold; }}
     </style>
 """, unsafe_allow_html=True)
 
 # Header
 st.title(f"📈 {config.APP_NAME}")
-st.caption(f"Version {config.APP_VERSION} — Pricing de Futures sur Indices MASI/MASI20")
+st.caption(f"Version {config.APP_VERSION} — Données Bourse de Casablanca")
 
 # ────────────────────────────────────────────
 # TABS DE NAVIGATION
 # ────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs(["🏠 Accueil", "📊 MASI/MASI20", "🧮 Pricing"])
+tab1, tab2, tab3, tab4 = st.tabs(["🏠 Accueil", "📊 Indices Live", "🧮 Pricing", "📈 Historique"])
 
 # ────────────────────────────────────────────
-# TAB 1 : ACCUEIL + GUIDE
+# TAB 1 : ACCUEIL
 # ────────────────────────────────────────────
 with tab1:
     st.header("🎯 Bienvenue sur MASI Futures")
@@ -42,88 +53,112 @@ with tab1:
     st.markdown(f"""
     ### Qu'est-ce que cette application ?
     
-    **MASI Futures** est un outil simple pour comprendre et calculer le prix 
-    théorique des contrats futures sur les indices marocains **MASI** et **MASI20**.
+    **MASI Futures** est un outil pour comprendre et calculer le prix théorique 
+    des contrats futures sur les indices marocains **MASI** et **MASI20**.
     
     > *« Améliorer l'efficacité du marché en permettant la couverture, 
     > l'optimisation de l'allocation et la découverte des prix. »*
     > 
     > — Document CDG Capital
     
-    ### 📋 Ce que vous pouvez faire :
+    ### 📋 Fonctionnalités :
     
-    - ✅ Comprendre les caractéristiques des futures MASI/MASI20
-    - ✅ Consulter les niveaux actuels des indices (données mockées)
-    - ✅ Calculer le prix théorique d'un future avec la formule :  
-       **F₀ = S₀ × e^((r−q)T)**
+    - ✅ **Données en temps réel** : Niveaux MASI/MASI20 depuis la Bourse de Casablanca
+    - ✅ **Pricing** : Calcul du prix théorique F₀ = S₀ × e^((r−q)T)
+    - ✅ **Historique** : Visualisation de l'évolution des indices
+    - ✅ **Couverture** : Calcul du nombre optimal de contrats (à venir)
     """)
     
     st.divider()
     
-    st.header("📘 Guide d'Utilisation Rapide")
+    st.header("📘 Guide Rapide")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("""
-        **1️⃣ Onglet "MASI/MASI20"**
-        - Voir le niveau spot des indices
-        - Consulter les caractéristiques des contrats
-        - *(News : version mockée pour cette démo)*
+        st.info("""
+        **1️⃣ Onglet "Indices Live"**
+        - Voir les niveaux actuels
+        - Variations journalières
+        - Statut du scraping
         """)
     
     with col2:
-        st.markdown("""
+        st.info("""
         **2️⃣ Onglet "Pricing"**
-        - Entrer les paramètres : Spot, r, q, T
-        - Obtenir le prix théorique du future
-        - Voir la valeur notionnelle du contrat
+        - Calculer le prix théorique
+        - Ajuster r, q, T
+        - Voir la valeur notionnelle
         """)
     
     with col3:
-        st.markdown("""
-        **3️⃣ Comprendre les résultats**
-        - Comparer prix théorique vs marché
-        - Identifier des opportunités d'arbitrage
-        - Exporter vos calculs (à venir)
+        st.info("""
+        **3️⃣ Onglet "Historique"**
+        - Graphique d'évolution
+        - Tendances récentes
+        - Export des données
         """)
-    
-    st.info("💡 **Astuce** : Commencez par l'onglet **Pricing** pour tester la formule avec l'exemple du document (§7.1).")
 
 # ────────────────────────────────────────────
-# TAB 2 : MASI / MASI20 INFOS
+# TAB 2 : INDICES LIVE (SCRAPPING)
 # ────────────────────────────────────────────
 with tab2:
-    st.header("📊 Indices MASI & MASI20")
+    st.header("📊 Indices MASI & MASI20 - Temps Réel")
     
-    # Sélecteur d'indice
-    indice_choisi = st.selectbox("Sélectionnez un indice", config.INDICES)
+    # Bouton pour forcer la mise à jour
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.caption("🔄 Données mises à jour automatiquement toutes les 5 minutes")
+    with col2:
+        if st.button("🔄 Actualiser", use_container_width=True):
+            st.cache_resource.clear()
+            st.rerun()
     
-    # Données mockées (à remplacer par scraping plus tard)
-    if indice_choisi == "MASI":
-        niveau = 12345.67
-        variation = "+0.45%"
-        haut = 12400.50
-        bas = 12280.30
-        ouverture = 12300.00
+    # Récupération des données
+    with st.spinner("Chargement des données..."):
+        indices_data = get_indices_data()
+    
+    # Affichage du statut
+    if indices_data:
+        st.success("✅ Connexion Bourse de Casablanca : OK")
     else:
-        niveau = 1876.54
-        variation = "+0.32%"
-        haut = 1885.20
-        bas = 1865.10
-        ouverture = 1870.00
-    
-    # Affichage des métriques
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Niveau", f"{niveau:,.2f} pts")
-    col2.metric("Variation", variation)
-    col3.metric("Plus Haut", f"{haut:,.2f}")
-    col4.metric("Plus Bas", f"{bas:,.2f}")
+        st.error("❌ Connexion échouée - Mode dégradé activé")
     
     st.divider()
     
-    # Caractéristiques du contrat
-    st.subheader("📋 Caractéristiques du Contrat Future")
+    # Affichage des indices
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("🇲🇦 MASI")
+        if indices_data and 'MASI' in indices_data:
+            masi = indices_data['MASI']
+            st.metric(
+                label="Niveau",
+                value=f"{masi['niveau']:,.2f} pts",
+                delta=masi['variation']
+            )
+            st.caption(f"Dernière MAJ: {masi['timestamp']}")
+        else:
+            st.warning("Données non disponibles")
+    
+    with col2:
+        st.subheader("🇲🇦 MASI20")
+        if indices_data and 'MASI20' in indices_data:
+            masi20 = indices_data['MASI20']
+            st.metric(
+                label="Niveau",
+                value=f"{masi20['niveau']:,.2f} pts",
+                delta=masi20['variation']
+            )
+            st.caption(f"Dernière MAJ: {masi20['timestamp']}")
+        else:
+            st.warning("Données non disponibles")
+    
+    st.divider()
+    
+    # Caractéristiques des contrats
+    st.subheader("📋 Caractéristiques des Contrats Futures")
     
     specs = pd.DataFrame({
         "Paramètre": [
@@ -131,57 +166,34 @@ with tab2:
             "Règlement",
             "Multiplicateur",
             "Échéances",
-            "Devise"
+            "Devise",
+            "Tick Size"
         ],
         "Valeur": [
-            f"Indice {indice_choisi}",
-            "Cash settlement (en espèces)",
+            "MASI / MASI20",
+            "Cash settlement",
             f"{config.MULTIPLICATEUR} MAD/point",
             "Mensuelles / Trimestrielles",
-            config.MULTIPLICATEUR
+            "MAD",
+            "0.01 point"
         ]
     })
     st.dataframe(specs, hide_index=True, use_container_width=True)
-    
-    st.divider()
-    
-    # News section (mockée)
-    st.subheader("📰 Actualités du Marché")
-    
-    news_mock = [
-        {
-            "titre": f"Le {indice_choisi} termine en hausse de 0,45%",
-            "source": "Bourse de Casablanca",
-            "date": "03/03/2026",
-            "resume": "Le marché marocain affiche une progression portée par les valeurs bancaires..."
-        },
-        {
-            "titre": "Introduction des futures sur indices : une étape clé",
-            "source": "CDG Capital",
-            "date": "01/03/2026",
-            "resume": "Lancement officiel des contrats futures MASI/MASI20 pour moderniser le marché..."
-        },
-        {
-            "titre": "Analyse : Impact des dividendes sur le pricing des futures",
-            "source": "Ilboursa",
-            "date": "28/02/2026",
-            "resume": "Les distributions de dividendes influencent directement le coût de portage..."
-        }
-    ]
-    
-    for n in news_mock:
-        with st.expander(f"📌 {n['titre']} — {n['source']} ({n['date']})"):
-            st.markdown(f"*{n['resume']}*")
-    
-    st.caption("ℹ️ News en version mockée. Scraping Bourse de Casablanca/Investing.com prévu en V2.")
 
 # ────────────────────────────────────────────
-# TAB 3 : PRICING CALCULATOR
+# TAB 3 : PRICING
 # ────────────────────────────────────────────
 with tab3:
     st.header("🧮 Calculateur de Prix Future")
     
     st.markdown("### Formule : $F_0 = S_0 \\times e^{(r-q)T}$")
+    
+    # Récupérer le spot depuis le scraping (ou manuel)
+    indices_data = get_indices_data()
+    spot_defaut = 12000.0
+    
+    if indices_data and 'MASI' in indices_data:
+        spot_defaut = indices_data['MASI']['niveau']
     
     # Inputs
     col1, col2 = st.columns(2)
@@ -190,7 +202,7 @@ with tab3:
         spot = st.number_input(
             "Niveau Spot (S₀) en points",
             min_value=1000.0,
-            value=12000.0,
+            value=spot_defaut,
             step=100.0
         )
         r = st.number_input(
@@ -224,7 +236,7 @@ with tab3:
     ecart = F0 - spot
     ecart_pct = (ecart / spot) * 100
     
-    # Affichage des résultats
+    # Résultats
     st.divider()
     st.subheader("📊 Résultats")
     
@@ -240,27 +252,50 @@ with tab3:
     - Le future est **{"au-dessus" if ecart > 0 else "en-dessous"}** du spot de **{abs(ecart):.2f} points**
     - À l'échéance (T=0), F₀ convergera vers S₀ = {spot:,.0f} pts
     """)
+
+# ────────────────────────────────────────────
+# TAB 4 : HISTORIQUE
+# ────────────────────────────────────────────
+with tab4:
+    st.header("📈 Historique des Indices")
     
-    # Exemple du document
-    with st.expander("📖 Voir l'exemple du document CDG Capital (§6)"):
-        st.markdown("""
-        **Paramètres de l'exemple :**
-        - Spot S₀ = 12 000 pts
-        - r = 3%, q = 2.5%, T = 0.25 ans (3 mois)
-        
-        **Calcul :**
-        ```
-        F₀ = 12 000 × e^((0.03 - 0.025) × 0.25)
-           = 12 000 × e^(0.00125)
-           = 12 000 × 1.00125
-           ≈ 12 015 pts
-        ```
-        
-        **Valeur notionnelle :** 12 015 × 10 = **120 150 MAD**
-        """)
+    indice_choisi = st.selectbox("Sélectionnez un indice", ["MASI", "MASI20"])
+    jours = st.slider("Nombre de jours", 10, 90, 30)
+    
+    # Récupération des données historiques
+    hist_data = get_historical_data(indice_choisi, jours)
+    
+    # Graphique
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=hist_data['Date'],
+        y=hist_data[f'{indice_choisi}_Close'],
+        name=f'{indice_choisi}',
+        line=dict(color=config.PRIMARY, width=2)
+    ))
+    
+    fig.update_layout(
+        title=f'Évolution de l\'indice {indice_choisi} sur {jours} jours',
+        xaxis_title='Date',
+        yaxis_title='Niveau (points)',
+        hovermode='x unified',
+        height=500
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Statistiques
+    st.subheader("📊 Statistiques")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Dernier cours", f"{hist_data[f'{indice_choisi}_Close'].iloc[-1]:,.2f}")
+    col2.metric("Plus haut", f"{hist_data[f'{indice_choisi}_Close'].max():,.2f}")
+    col3.metric("Plus bas", f"{hist_data[f'{indice_choisi}_Close'].min():,.2f}")
+    col4.metric("Variation totale", f"{((hist_data[f'{indice_choisi}_Close'].iloc[-1] / hist_data[f'{indice_choisi}_Close'].iloc[0]) - 1) * 100:+.2f}%")
 
 # ────────────────────────────────────────────
 # FOOTER
 # ────────────────────────────────────────────
 st.divider()
-st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Données mockées — Scraping en V2")
+st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping Bourse de Casablanca")
