@@ -383,3 +383,192 @@ def analyser_risque_marge(simulation_result, niveau_confiance=0.95):
         'nombre_appels': len(simulation_result['appels_marge']),
         'risque': 'Élevé' if proba_appel > 0.3 else 'Moyen' if proba_appel > 0.1 else 'Faible'
     }
+# ────────────────────────────────────────────
+# 7. RISK DASHBOARD (§1.2 du document)
+# ────────────────────────────────────────────
+
+def calcul_var_parametrique(portefeuille_value, volatilite_annuelle, 
+                            niveau_confiance=0.95, horizon_jours=1):
+    """
+    Calcule la Value at Risk (VaR) paramétrique (§1.2)
+    Hypothèse: distribution normale des rendements
+    
+    Formule: VaR = V × z × σ × √T
+    
+    Args:
+        portefeuille_value: Valeur du portefeuille (MAD)
+        volatilite_annuelle: Volatilité annuelle en décimal (ex: 0.18 = 18%)
+        niveau_confiance: Niveau de confiance (0.95 ou 0.99)
+        horizon_jours: Horizon de calcul en jours
+    
+    Returns:
+        VaR en MAD (valeur positive = perte maximale attendue)
+    """
+    from scipy import stats
+    
+    # Z-score selon le niveau de confiance
+    z_score = stats.norm.ppf(niveau_confiance)
+    
+    # Volatilité journalière (racine carrée du temps)
+    volatilite_journaliere = volatilite_annuelle / np.sqrt(252)
+    
+    # VaR
+    var = portefeuille_value * z_score * volatilite_journaliere * np.sqrt(horizon_jours)
+    
+    return var
+
+def calcul_var_historique(returns, portefeuille_value, niveau_confiance=0.95):
+    """
+    Calcule la Value at Risk (VaR) historique (§1.2)
+    Basée sur la distribution empirique des rendements passés
+    
+    Args:
+        returns: Série de rendements historiques (array ou list)
+        portefeuille_value: Valeur actuelle du portefeuille (MAD)
+        niveau_confiance: Niveau de confiance (0.95 ou 0.99)
+    
+    Returns:
+        VaR en MAD (valeur positive = perte maximale attendue)
+    """
+    import numpy as np
+    
+    # Percentile correspondant au niveau de confiance
+    percentile = (1 - niveau_confiance) * 100
+    
+    # VaR = percentile des pertes
+    var_pct = np.percentile(returns, percentile)
+    
+    return abs(portefeuille_value * var_pct)
+
+def calcul_cvar(returns, portefeuille_value, niveau_confiance=0.95):
+    """
+    Calcule la Conditional VaR (CVaR) / Expected Shortfall
+    Perte moyenne dans la queue de distribution au-delà de la VaR
+    
+    Args:
+        returns: Série de rendements historiques
+        portefeuille_value: Valeur du portefeuille (MAD)
+        niveau_confiance: Niveau de confiance
+    
+    Returns:
+        CVaR en MAD (perte moyenne au-delà de la VaR)
+    """
+    import numpy as np
+    
+    # Seuil de la VaR
+    percentile = (1 - niveau_confiance) * 100
+    var_threshold = np.percentile(returns, percentile)
+    
+    # CVaR = moyenne des rendements en dessous du seuil VaR
+    queue_rendements = returns[returns <= var_threshold]
+    
+    if len(queue_rendements) == 0:
+        return calcul_var_historique(returns, portefeuille_value, niveau_confiance)
+    
+    cvar_pct = np.mean(queue_rendements)
+    
+    return abs(portefeuille_value * cvar_pct)
+
+def stress_testing(portefeuille_value, beta, scenarios=None):
+    """
+    Effectue un stress testing sur le portefeuille (§1.2)
+    
+    Args:
+        portefeuille_value: Valeur du portefeuille (MAD)
+        beta: Bêta du portefeuille par rapport à l'indice
+        scenarios: Dict de scénarios {nom: variation_pct}
+    
+    Returns:
+        DataFrame avec les résultats par scénario
+    """
+    import pandas as pd
+    
+    # Scénarios par défaut si non fournis
+    if scenarios is None:
+        scenarios = {
+            "Correction modérée": -10,
+            "Correction sévère": -20,
+            "Crise 2008": -40,
+            "COVID-19 (mars 2020)": -30,
+            "Stress extrême": -50
+        }
+    
+    results = []
+    
+    for nom, variation_indice in scenarios.items():
+        # Impact sur le portefeuille (amplifié par le bêta)
+        variation_pf = beta * variation_indice
+        perte = portefeuille_value * variation_pf / 100
+        valeur_finale = portefeuille_value + perte
+        
+        results.append({
+            'Scénario': nom,
+            'Variation Indice (%)': variation_indice,
+            'Variation Portefeuille (%)': round(variation_pf, 1),
+            'Perte Estimée (MAD)': round(perte, 0),
+            'Valeur Finale (MAD)': round(valeur_finale, 0),
+            'Niveau de Risque': '🔴 Élevé' if variation_pf < -20 else '🟡 Moyen' if variation_pf < -10 else '🟢 Faible'
+        })
+    
+    return pd.DataFrame(results)
+
+def calcul_delta_equivalent(portefeuille_value, beta, niveau_indice):
+    """
+    Calcule le delta équivalent indice (§1.2)
+    Exposition du portefeuille en termes de points d'indice
+    
+    Args:
+        portefeuille_value: Valeur du portefeuille (MAD)
+        beta: Bêta du portefeuille
+        niveau_indice: Niveau actuel de l'indice (points)
+    
+    Returns:
+        Delta équivalent en points d'indice
+    """
+    # Exposition théorique = (Valeur portefeuille × Bêta) / Niveau indice
+    return (portefeuille_value * beta) / niveau_indice
+
+def analyser_risque_complet(portefeuille_value, beta, volatilite_annuelle, 
+                           returns_historiques=None, niveau_indice=12000):
+    """
+    Analyse de risque complète combinant toutes les métriques
+    
+    Args:
+        portefeuille_value: Valeur du portefeuille (MAD)
+        beta: Bêta du portefeuille
+        volatilite_annuelle: Volatilité annuelle estimée
+        returns_historiques: Rendements historiques (optionnel)
+        niveau_indice: Niveau actuel de l'indice
+    
+    Returns:
+        Dict avec toutes les métriques de risque
+    """
+    results = {}
+    
+    # VaR paramétrique (95% et 99%, 1 jour et 10 jours)
+    results['var_95_1j'] = calcul_var_parametrique(portefeuille_value, volatilite_annuelle, 0.95, 1)
+    results['var_99_1j'] = calcul_var_parametrique(portefeuille_value, volatilite_annuelle, 0.99, 1)
+    results['var_95_10j'] = calcul_var_parametrique(portefeuille_value, volatilite_annuelle, 0.95, 10)
+    
+    # VaR historique si données disponibles
+    if returns_historiques is not None and len(returns_historiques) > 0:
+        results['var_hist_95'] = calcul_var_historique(returns_historiques, portefeuille_value, 0.95)
+        results['cvar_95'] = calcul_cvar(returns_historiques, portefeuille_value, 0.95)
+    else:
+        results['var_hist_95'] = results['var_95_1j']  # Fallback
+        results['cvar_95'] = results['var_99_1j'] * 1.2  # Estimation
+    
+    # Stress testing
+    results['stress'] = stress_testing(portefeuille_value, beta)
+    
+    # Delta équivalent
+    results['delta_equivalent'] = calcul_delta_equivalent(portefeuille_value, beta, niveau_indice)
+    
+    # Synthèse
+    results['risque_global'] = (
+        '🔴 Élevé' if results['var_95_1j'] / portefeuille_value > 0.03 
+        else '🟡 Moyen' if results['var_95_1j'] / portefeuille_value > 0.015 
+        else '🟢 Faible'
+    )
+    
+    return results
