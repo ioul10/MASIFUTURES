@@ -27,7 +27,6 @@ def simulation_couverture(portefeuille, beta, spot_initial, variation_marche_pct
                           n_contrats, multiplicateur=10):
     """
     Simule l'impact d'une variation de marché avec/sans couverture
-    Retourne un dict avec tous les résultats
     """
     # Variation du portefeuille (amplifiée par le bêta)
     variation_pf_pct = beta * variation_marche_pct
@@ -46,5 +45,6 @@ def simulation_couverture(portefeuille, beta, spot_initial, variation_marche_pct
         'spot_final': spot_final,
         'gain_future': gain_future,
         'valeur_finale': valeur_finale,
-        'efficacite': 1 - abs(valeur_finale - portefeuille)/portefeuille
+        'efficacite': 1 - abs(valeur_finale - portefeuille)/portefeuille if portefeuille != 0 else 0
     }
+
