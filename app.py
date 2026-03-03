@@ -7,8 +7,16 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import config
-from utils.calculations import prix_future_theorique, valeur_notionnelle, jours_vers_annees, nombre_contrats_couverture, simulation_couverture
-from utils.scraping import get_indices_data, get_historical_data, get_cache_info  
+from utils.calculations import (
+    prix_future_theorique, 
+    valeur_notionnelle, 
+    jours_vers_annees,
+    nombre_contrats_couverture, 
+    simulation_couverture,
+    cout_de_portage,        # ← NOUVEAU
+    prime_future,           # ← NOUVEAU
+    detecter_arbitrage      # ← NOUVEAU
+)from utils.scraping import get_indices_data, get_historical_data, get_cache_info  
 
 # Configuration de la page
 st.set_page_config(
@@ -301,76 +309,243 @@ elif page == "📊 Indices & Historique":
     st.dataframe(specs, hide_index=True, use_container_width=True)
 
 # ────────────────────────────────────────────
-# PAGE 3 : PRICING
+# PAGE 3 : VALORISATION FUTURES (§7 du document)
 # ────────────────────────────────────────────
 elif page == "🧮 Pricing":
-    st.header("🧮 Calculateur de Prix Future")
+    st.markdown("## 💰 Valorisation des Contrats Futures")
     
-    st.markdown("### Formule : $F_0 = S_0 \\times e^{(r-q)T}$")
+    st.markdown("""
+    ### 📐 Formule de Pricing (Absence d'Arbitrage)
     
-    # Récupérer le spot depuis le scraping (ou manuel)
-    spot_defaut = 12000.0
+    $$F_0 = S_0 \\times e^{(r-q)T}$$
     
-    if indices_data and 'MASI' in indices_data:
-        spot_defaut = indices_data['MASI']['niveau']
+    **Où :**
+    - **S₀** = Niveau spot de l'indice
+    - **r** = Taux sans risque annuel
+    - **q** = Rendement en dividendes attendu
+    - **T** = Maturité en années
+    """)
     
-    # Inputs
+    st.divider()
+    
+    # ────────────────────────────────────────
+    # INPUTS
+    # ────────────────────────────────────────
+    st.markdown("### 🔧 Paramètres de Valorisation")
+    
     col1, col2 = st.columns(2)
     
     with col1:
+        # Spot (auto depuis scraping)
+        spot_defaut = indices_data['MASI']['niveau'] if indices_data and 'MASI' in indices_data else 12000
         spot = st.number_input(
-            "Niveau Spot (S₀) en points",
+            "📊 Niveau Spot (S₀) en points",
             min_value=1000.0,
             value=spot_defaut,
-            step=100.0
+            step=50.0,
+            help="Niveau actuel de l'indice MASI/MASI20"
         )
+        
         r = st.number_input(
-            "Taux sans risque (r) en % annuel",
+            "🏦 Taux sans risque (r) en % annuel",
             min_value=0.0,
-            max_value=20.0,
-            value=config.TAUX_SANS_RISQUE_DEF * 100,
-            step=0.1
+            max_value=15.0,
+            value=3.0,
+            step=0.1,
+            help="Taux des bons du Trésor marocain"
         ) / 100
         
     with col2:
         q = st.number_input(
-            "Rendement dividendes (q) en % annuel",
+            "💵 Rendement dividendes (q) en % annuel",
             min_value=0.0,
             max_value=10.0,
-            value=config.DIVIDENDE_YIELD_DEF * 100,
-            step=0.1
+            value=2.5,
+            step=0.1,
+            help="Dividendes moyens attendus de l'indice"
         ) / 100
+        
         jours = st.number_input(
-            "Jours jusqu'à l'échéance",
+            "📅 Jours jusqu'à l'échéance",
             min_value=1,
             max_value=365,
             value=90,
-            step=1
+            step=1,
+            help="Durée restante avant expiration du contrat"
         )
     
-    # Calculs
+    # ────────────────────────────────────────
+    # CALCULS
+    # ────────────────────────────────────────
     T = jours_vers_annees(jours)
     F0 = prix_future_theorique(spot, r, q, T)
+    cout_port = cout_de_portage(r, q, T)
+    prime = prime_future(F0, spot)
     valeur_not = valeur_notionnelle(F0)
-    ecart = F0 - spot
-    ecart_pct = (ecart / spot) * 100
     
-    # Résultats
+    # ────────────────────────────────────────
+    # RÉSULTATS PRINCIPAUX
+    # ────────────────────────────────────────
     st.divider()
-    st.subheader("📊 Résultats")
+    st.markdown("### 📊 Résultats de la Valorisation")
     
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Prix Future Théorique (F₀)", f"{F0:,.2f} pts")
-    col2.metric("Valeur Notionnelle", f"{valeur_not:,.0f} MAD")
-    col3.metric("Écart vs Spot", f"{ecart_pct:+.2f}%")
+    col1, col2, col3, col4 = st.columns(4)
     
-    # Interprétation
-    st.info(f"""
-    **Interprétation :**
-    - Coût de portage : `(r - q) × T = {(r-q)*100:.2f}% × {T:.3f} = {(r-q)*T*100:.2f}%`
-    - Le future est **{"au-dessus" if ecart > 0 else "en-dessous"}** du spot de **{abs(ecart):.2f} points**
-    - À l'échéance (T=0), F₀ convergera vers S₀ = {spot:,.0f} pts
-    """)
+    with col1:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Prix Future Théorique (F₀)</label>
+                <value>{F0:,.2f}</value>
+                <small style='color: #6B7280;'>points</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Valeur Notionnelle</label>
+                <value>{valeur_not:,.0f}</value>
+                <small style='color: #6B7280;'>MAD</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        couleur_prime = "#10B981" if prime >= 0 else "#EF4444"
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Prime vs Spot</label>
+                <value style='color: {couleur_prime};'>{prime*100:+.2f}%</value>
+                <small style='color: #6B7280;'>{F0-spot:+,.0f} pts</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Coût de Portage</label>
+                <value>{cout_port*100:+.2f}%</value>
+                <small style='color: #6B7280;'>(r-q)×T</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # ────────────────────────────────────────
+    # DÉTECTEUR D'ARBITRAGE (§7.2)
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 🎯 Détecteur d'Opportunités d'Arbitrage")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        prix_marche = st.number_input(
+            "Prix Future Observé sur le Marché (optionnel)",
+            min_value=0.0,
+            value=float(F0),
+            step=10.0,
+            help="Prix auquel le future se négocie réellement"
+        )
+    
+    with col2:
+        seuil = st.slider(
+            "Seuil d'arbitrage (%)",
+            min_value=0.1,
+            max_value=5.0,
+            value=1.0,
+            step=0.1
+        ) / 100
+    
+    # Analyse d'arbitrage
+    signal, strategie = detecter_arbitrage(prix_marche, F0, seuil)
+    ecart_absolu = prix_marche - F0
+    ecart_pct = (ecart_absolu / F0) * 100 if F0 != 0 else 0
+    
+    # Affichage du signal
+    if signal == 'Surévalué':
+        st.markdown(f"""
+            <div class='warning-box'>
+                <strong>⚠️ Signal : {signal}</strong><br>
+                Le future est <strong>{abs(ecart_pct):.2f}%</strong> au-dessus de sa valeur théorique.<br>
+                <strong>Stratégie recommandée :</strong> {strategie}
+            </div>
+        """, unsafe_allow_html=True)
+    elif signal == 'Sous-évalué':
+        st.markdown(f"""
+            <div class='success-box'>
+                <strong>✅ Signal : {signal}</strong><br>
+                Le future est <strong>{abs(ecart_pct):.2f}%</strong> en-dessous de sa valeur théorique.<br>
+                <strong>Stratégie recommandée :</strong> {strategie}
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+            <div class='info-box'>
+                <strong>ℹ️ Signal : {signal}</strong><br>
+                L'écart ({ecart_pct:+.2f}%) est dans la zone normale (< {seuil*100:.1f}%).<br>
+                <strong>Recommandation :</strong> {strategie}
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # ────────────────────────────────────────
+    # EXEMPLE DU DOCUMENT (§6 & §7)
+    # ────────────────────────────────────────
+    with st.expander("📖 Voir l'Exemple du Document CDG Capital"):
+        st.markdown("""
+        **Paramètres de l'exemple (§6) :**
+        - Spot S₀ = 12 000 points
+        - Taux sans risque r = 3%
+        - Dividendes q = 2.5%
+        - Maturité T = 90 jours (0.357 années)
+        
+        **Calcul :**
+        ```
+        F₀ = 12 000 × e^((0.03 - 0.025) × 0.357)
+           = 12 000 × e^(0.001785)
+           = 12 000 × 1.00179
+           ≈ 12 021 points
+        ```
+        
+        **Valeur notionnelle :** 12 021 × 10 = **120 210 MAD**
+        
+        **Prime :** (12 021 - 12 000) / 12 000 = **+0.18%**
+        
+        **Coût de portage :** (3% - 2.5%) × 0.357 = **0.18%**
+        """)
+    
+    # ────────────────────────────────────────
+    # INTERPRÉTATION
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 💡 Interprétation des Résultats")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+        **📊 Analyse du Prix Future :**
+        - Le future cote à **{F0:,.2f} points**
+        - Soit une **prime de {prime*100:+.2f}%** par rapport au spot
+        - Valeur notionnelle : **{valeur_not:,.0f} MAD** par contrat
+        """)
+    
+    with col2:
+        st.markdown(f"""
+        **📈 Coût de Portage :**
+        - Taux sans risque : **{r*100:.1f}%**
+        - Rendement dividendes : **{q*100:.1f}%**
+        - Coût net : **{(r-q)*100:.2f}%** annuel
+        - Sur {jours} jours : **{cout_port*100:.2f}%**
+        """)
+    
+    # Info box pédagogique
+    st.markdown("""
+        <div class='info-box'>
+            <strong>💡 Le saviez-vous ?</strong><br>
+            La convergence des prix futures vers le spot à l'échéance (T→0) est garantie par l'arbitrage. 
+            Si F₀ ≠ S₀ à l'échéance, un arbitragiste pourrait réaliser un profit sans risque, 
+            ce qui ramènerait les prix à l'équilibre (Document §4.5 & §7.2).
+        </div>
+    """, unsafe_allow_html=True)
+  
 # ────────────────────────────────────────────
 # PAGE 4 : COUVERTURE (HEDGING) - §6 du document
 # ────────────────────────────────────────────
@@ -527,6 +702,7 @@ elif page == "🛡️ Couverture":
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
 
 
 
