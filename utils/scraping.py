@@ -240,7 +240,8 @@ if __name__ == "__main__":
     
     print("\n2️⃣ Test: Informations cache...")
     cache_info = get_cache_info()
-    print(f"   Fichier cache: {'✅ Existe' if cache_info['file_exists'] else '❌ N'existe pas'}")
+    status = "✅ Existe" if cache_info['file_exists'] else "❌ Inexistant"
+    print(f"   Fichier cache: {status}")
     print(f"   Âge du cache: {cache_info['cache_age']}")
     print(f"   Durée: {cache_info['duration_minutes']} minutes")
     
