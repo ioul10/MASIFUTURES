@@ -16,6 +16,35 @@ def jours_vers_annees(jours):
     return jours / 252
 
 def nombre_contrats_couverture(portefeuille, beta, spot, multiplicateur=10):
-    """N* = β × P / A"""
-    A = spot * multiplicateur
+    """
+    Calcule le nombre optimal de contrats pour couvrir un portefeuille
+    Formule: N* = β × P / A  (Document §6.2)
+    """
+    A = spot * multiplicateur  # Valeur notionnelle d'un contrat
     return round(beta * portefeuille / A)
+
+def simulation_couverture(portefeuille, beta, spot_initial, variation_marche_pct, 
+                          n_contrats, multiplicateur=10):
+    """
+    Simule l'impact d'une variation de marché avec/sans couverture
+    Retourne un dict avec tous les résultats
+    """
+    # Variation du portefeuille (amplifiée par le bêta)
+    variation_pf_pct = beta * variation_marche_pct
+    perte_portefeuille = portefeuille * variation_pf_pct / 100
+    
+    # Gain sur la position future courte
+    spot_final = spot_initial * (1 + variation_marche_pct/100)
+    gain_future = n_contrats * (spot_initial - spot_final) * multiplicateur
+    
+    # Valeur finale
+    valeur_finale = portefeuille + perte_portefeuille + gain_future
+    
+    return {
+        'variation_pf_pct': variation_pf_pct,
+        'perte_portefeuille': perte_portefeuille,
+        'spot_final': spot_final,
+        'gain_future': gain_future,
+        'valeur_finale': valeur_finale,
+        'efficacite': 1 - abs(valeur_finale - portefeuille)/portefeuille
+    }
