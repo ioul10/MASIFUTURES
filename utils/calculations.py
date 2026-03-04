@@ -4,6 +4,7 @@
 # ============================================
 
 import numpy as np
+import datetime
 
 # ────────────────────────────────────────────
 # 1. VALORISATION (§7.1 du document)
@@ -792,3 +793,4 @@ def rapport_conformite_complet(position, type_intervenant, prix_actuel, prix_ref
         'marge_requise': marge_requise,
         'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
+
