@@ -8,3 +8,4 @@ lxml>=5.1.0
 cachetools>=5.3.0
 scipy>=1.12.0
 fpdf2>=2.7.0
+lxml>=5.1.0
