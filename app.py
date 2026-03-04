@@ -1989,10 +1989,11 @@ st.markdown(f"""
             CDG Capital — Marché à Terme Marocain
         </p>
         <p style='margin: 0; font-size: 0.85em; opacity: 0.8;'>
-            © {datetime.datetime.now().year} — Application à usage éducatif et professionnel
+            © 2026 — Application à usage éducatif et professionnel
         </p>
     </div>
 """, unsafe_allow_html=True)
+
 
 
 
