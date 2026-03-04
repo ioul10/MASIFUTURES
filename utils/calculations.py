@@ -572,3 +572,223 @@ def analyser_risque_complet(portefeuille_value, beta, volatilite_annuelle,
     )
     
     return results
+
+# ────────────────────────────────────────────
+# 8. LIMITES DE POSITION (§4.4 du document)
+# ────────────────────────────────────────────
+
+def calcul_limit_up_down(prix_reference, pourcentage_limit=10):
+    """
+    Calcule les seuils Limit Up et Limit Down (§4.4.a)
+    
+    Args:
+        prix_reference: Prix de référence (généralement cours de clôture J-1)
+        pourcentage_limit: Pourcentage de variation maximale (défaut: 10%)
+    
+    Returns:
+        Dict avec prix_reference, limit_up, limit_down
+    """
+    limit_up = prix_reference * (1 + pourcentage_limit / 100)
+    limit_down = prix_reference * (1 - pourcentage_limit / 100)
+    
+    return {
+        'prix_reference': prix_reference,
+        'limit_up': limit_up,
+        'limit_down': limit_down,
+        'pourcentage': pourcentage_limit
+    }
+
+def verifier_limit_up_down(prix_actuel, prix_reference, pourcentage_limit=10):
+    """
+    Vérifie si le prix actuel a触é les limites Limit Up/Down (§4.4.a)
+    
+    Args:
+        prix_actuel: Prix actuel du future
+        prix_reference: Prix de référence (clôture J-1)
+        pourcentage_limit: Pourcentage de variation maximale
+    
+    Returns:
+        Dict avec statut, seuil触é, trading_autorisé
+    """
+    limits = calcul_limit_up_down(prix_reference, pourcentage_limit)
+    
+    if prix_actuel >= limits['limit_up']:
+        return {
+            'statut': '🔴 Limit Up触é',
+            'seuil': 'Limit Up',
+            'prix_max': limits['limit_up'],
+            'trading_autorise': False,
+            'message': 'Prix plafond atteint - Achat uniquement au-dessous du Limit Up'
+        }
+    elif prix_actuel <= limits['limit_down']:
+        return {
+            'statut': '🔴 Limit Down触é',
+            'seuil': 'Limit Down',
+            'prix_min': limits['limit_down'],
+            'trading_autorise': False,
+            'message': 'Prix plancher atteint - Vente uniquement au-dessus du Limit Down'
+        }
+    else:
+        return {
+            'statut': '✅ Dans les limites',
+            'seuil': 'Aucun',
+            'trading_autorise': True,
+            'message': 'Trading normal autorisé',
+            'marge_up': limits['limit_up'] - prix_actuel,
+            'marge_down': prix_actuel - limits['limit_down']
+        }
+
+def calcul_position_limit(type_intervenant, indice='MASI'):
+    """
+    Calcule la limite de position selon le type d'intervenant (§4.4.c)
+    
+    Args:
+        type_intervenant: Type d'acteur (Investisseur, Trader, Market Maker)
+        indice: Indice concerné (MASI ou MASI20)
+    
+    Returns:
+        Nombre maximal de contrats autorisés
+    """
+    # Limites typiques (à ajuster selon réglementations officielles)
+    limits = {
+        'Investisseur Institutionnel': {'MASI': 5000, 'MASI20': 3000},
+        'Investisseur Particulier': {'MASI': 1000, 'MASI20': 500},
+        'Trader Propriétaire': {'MASI': 10000, 'MASI20': 5000},
+        'Market Maker': {'MASI': 20000, 'MASI20': 10000},
+        'Compensateur': {'MASI': 50000, 'MASI20': 25000}
+    }
+    
+    return limits.get(type_intervenant, {}).get(indice, 1000)
+
+def verifier_conformity_position(position_actuelle, type_intervenant, indice='MASI'):
+    """
+    Vérifie si la position actuelle respecte les limites réglementaires (§4.4.c)
+    
+    Args:
+        position_actuelle: Nombre de contrats détenus (net)
+        type_intervenant: Type d'acteur
+        indice: Indice concerné
+    
+    Returns:
+        Dict avec statut, limite, pourcentage_utilise, conformite
+    """
+    limite_max = calcul_position_limit(type_intervenant, indice)
+    pourcentage_utilise = (abs(position_actuelle) / limite_max) * 100 if limite_max > 0 else 0
+    
+    if abs(position_actuelle) > limite_max:
+        return {
+            'statut': '🔴 Non Conforme',
+            'limite': limite_max,
+            'position': position_actuelle,
+            'depassement': abs(position_actuelle) - limite_max,
+            'pourcentage_utilise': pourcentage_utilise,
+            'conformite': False,
+            'action_requise': f'Réduire la position de {abs(position_actuelle) - limite_max:,} contrats'
+        }
+    elif pourcentage_utilise > 80:
+        return {
+            'statut': '🟡 Attention',
+            'limite': limite_max,
+            'position': position_actuelle,
+            'pourcentage_utilise': pourcentage_utilise,
+            'conformite': True,
+            'action_requise': 'Approche de la limite - Surveiller'
+        }
+    else:
+        return {
+            'statut': '✅ Conforme',
+            'limite': limite_max,
+            'position': position_actuelle,
+            'pourcentage_utilise': pourcentage_utilise,
+            'conformite': True,
+            'action_requise': 'Aucune action requise'
+        }
+
+def calcul_marge_requise_position(position, prix_future, multiplicateur=10, taux_marge=10):
+    """
+    Calcule la marge requise pour une position donnée
+    
+    Args:
+        position: Nombre de contrats (positif = long, négatif = short)
+        prix_future: Prix du future en points
+        multiplicateur: Valeur par point (MAD)
+        taux_marge: Pourcentage de marge requise
+    
+    Returns:
+        Marge requise en MAD
+    """
+    valeur_notionnelle = abs(position) * prix_future * multiplicateur
+    return valeur_notionnelle * (taux_marge / 100)
+
+def analyse_risque_position(position, prix_entree, prix_actuel, multiplicateur=10):
+    """
+    Analyse le risque d'une position future
+    
+    Args:
+        position: Nombre de contrats
+        prix_entree: Prix d'entrée moyen
+        prix_actuel: Prix actuel du marché
+        multiplicateur: Valeur par point
+    
+    Returns:
+        Dict avec P&L, risque, recommendations
+    """
+    # P&L non réalisé
+    pnl_non_realise = (prix_actuel - prix_entree) * multiplicateur * position
+    
+    # Variation en pourcentage
+    variation_pct = ((prix_actuel - prix_entree) / prix_entree) * 100 if prix_entree != 0 else 0
+    
+    # Évaluation du risque
+    if abs(variation_pct) > 10:
+        niveau_risque = '🔴 Élevé'
+    elif abs(variation_pct) > 5:
+        niveau_risque = '🟡 Moyen'
+    else:
+        niveau_risque = '🟢 Faible'
+    
+    return {
+        'pnl_non_realise': pnl_non_realise,
+        'variation_pct': variation_pct,
+        'niveau_risque': niveau_risque,
+        'prix_entree': prix_entree,
+        'prix_actuel': prix_actuel,
+        'position': position,
+        'recommendation': 'Surveiller de près' if abs(variation_pct) > 5 else 'Position sous contrôle'
+    }
+
+def rapport_conformite_complet(position, type_intervenant, prix_actuel, prix_reference, 
+                               indice='MASI', multiplicateur=10):
+    """
+    Génère un rapport complet de conformité réglementaire
+    
+    Args:
+        position: Nombre de contrats détenus
+        type_intervenant: Type d'acteur
+        prix_actuel: Prix actuel du future
+        prix_reference: Prix de référence (J-1)
+        indice: Indice concerné
+        multiplicateur: Valeur par point
+    
+    Returns:
+        Dict avec tous les éléments de conformité
+    """
+    # Vérification Limit Up/Down
+    limit_check = verifier_limit_up_down(prix_actuel, prix_reference)
+    
+    # Vérification Position Limits
+    position_check = verifier_conformity_position(position, type_intervenant, indice)
+    
+    # Marge requise
+    marge_requise = calcul_marge_requise_position(position, prix_actuel, multiplicateur)
+    
+    # Synthèse
+    conformite_globale = limit_check['trading_autorise'] and position_check['conformite']
+    
+    return {
+        'conformite_globale': conformite_globale,
+        'limit_up_down': limit_check,
+        'position_limits': position_check,
+        'marge_requise': marge_requise,
+        'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
