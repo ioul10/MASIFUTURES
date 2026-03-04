@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import config
-from utils.calculations import (prix_future_theorique, valeur_notionnelle, jours_vers_annees,nombre_contrats_couverture, simulation_couverture,cout_de_portage,prime_future,detecter_arbitrage,calcul_marge_initiale,calcul_marge_maintenance,calcul_appel_marge,simulation_marging_to_market, analyser_risque_marge, calcul_var_parametrique, calcul_var_historique, calcul_cvar, stress_testing, calcul_delta_equivalent, analyser_risque_complet )
+from utils.calculations import (prix_future_theorique, valeur_notionnelle, jours_vers_annees,nombre_contrats_couverture, simulation_couverture,cout_de_portage,prime_future,detecter_arbitrage,calcul_marge_initiale,calcul_marge_maintenance,calcul_appel_marge,simulation_marging_to_market, analyser_risque_marge, calcul_var_parametrique, calcul_var_historique, calcul_cvar, stress_testing, calcul_delta_equivalent, analyser_risque_complet,    calcul_limit_up_down, verifier_limit_up_down,  calcul_position_limit, verifier_conformity_position, calcul_marge_requise_position, analyse_risque_position, rapport_conformite_complet )
 from utils.scraping import get_indices_data, get_historical_data, get_cache_info  
 
 # Configuration de la page
@@ -110,10 +110,11 @@ with st.sidebar:
     # Menu de navigation
   
     # Menu de navigation (mettre à jour)
+    # Menu de navigation (mettre à jour - 7 pages maintenant)
     page = st.radio(
-        "Pages",
-        ["🏠 Accueil", "📊 Indices & Historique", "🧮 Pricing", "🛡️ Couverture", "⚠️ Marges", "📈 Risk Dashboard"],  # ← Ajouté
-        label_visibility="collapsed"
+    "Pages",
+          ["🏠 Accueil", "📊 Indices & Historique", "🧮 Pricing", "🛡️ Couverture", "⚠️ Marges", "📈 Risk Dashboard", "📏 Limites"],  # ← Ajouté
+          label_visibility="collapsed"
     )
 
 # ────────────────────────────────────────────
@@ -1341,13 +1342,345 @@ elif page == "📈 Risk Dashboard":
             (Document §1.2).
         </div>
     """, unsafe_allow_html=True)
-
+# ────────────────────────────────────────────
+# PAGE 7 : LIMITES DE POSITION (§4.4 du document)
+# ────────────────────────────────────────────
+elif page == "📏 Limites":
+    st.markdown("## 📏 Limites de Position et Régulation du Marché")
+    
+    st.markdown("""
+    ### 🎯 Objectif (Document §4.4)
+    
+    Les limites de position et les mécanismes de régulation assurent :
+    
+    - ✅ **L'intégrité du marché** : Éviter la manipulation des prix
+    - ✅ **La liquidité** : Empêcher la concentration excessive
+    - ✅ **La stabilité** : Limiter les variations excessives (Limit Up/Down)
+    - ✅ **La transparence** : Surveillance des positions par la CCP
+    """)
+    
+    st.divider()
+    
+    # ────────────────────────────────────────
+    # INPUTS
+    # ────────────────────────────────────────
+    st.markdown("### 🔧 Paramètres de Conformité")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        type_intervenant = st.selectbox(
+            "Type d'Intervenant",
+            ["Investisseur Institutionnel", "Investisseur Particulier", 
+             "Trader Propriétaire", "Market Maker", "Compensateur"],
+            help="Détermine les limites de position applicables"
+        )
+        indice = st.selectbox(
+            "Indice Concerné",
+            ["MASI", "MASI20"]
+        )
+        
+    with col2:
+        position_actuelle = st.number_input(
+            "Position Actuelle (contrats)",
+            min_value=-100000,
+            max_value=100000,
+            value=500,
+            step=100,
+            help="Positive = Long, Négative = Short"
+        )
+        prix_actuel = st.number_input(
+            "Prix Actuel (points)",
+            min_value=1000.0,
+            value=12000.0,
+            step=50.0
+        )
+        
+    with col3:
+        prix_reference = st.number_input(
+            "Prix de Référence J-1 (points)",
+            min_value=1000.0,
+            value=11900.0,
+            step=50.0,
+            help="Cours de clôture de la veille"
+        )
+        limit_pct = st.slider(
+            "Limit Up/Down (%)",
+            min_value=5,
+            max_value=15,
+            value=10,
+            step=1
+        )
+    
+    # ────────────────────────────────────────
+    # CALCULS
+    # ────────────────────────────────────────
+    # Rapport de conformité complet
+    rapport = rapport_conformite_complet(
+        position=position_actuelle,
+        type_intervenant=type_intervenant,
+        prix_actuel=prix_actuel,
+        prix_reference=prix_reference,
+        indice=indice
+    )
+    
+    # Analyse de risque position
+    risque_position = analyse_risque_position(
+        position=position_actuelle,
+        prix_entree=prix_reference,
+        prix_actuel=prix_actuel
+    )
+    
+    # ────────────────────────────────────────
+    # SYNTHÈSE DE CONFORMITÉ
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 🎯 Synthèse de Conformité")
+    
+    # Statut global
+    if rapport['conformite_globale']:
+        st.markdown(f"""
+            <div class='success-box'>
+                <strong>✅ Conformité Globale : RESPECTÉE</strong><br>
+                Toutes les limites réglementaires sont respectées. Trading autorisé.
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+            <div class='warning-box'>
+                <strong>⚠️ Conformité Globale : NON RESPECTÉE</strong><br>
+                Une ou plusieurs limites sont dépassées. Action corrective requise.
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # ────────────────────────────────────────
+    # LIMIT UP / DOWN
+    # ────────────────────────────────────────
+    st.markdown("### 📊 Limit Up/Down (§4.4.a)")
+    
+    limit_info = rapport['limit_up_down']
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Prix de Référence</label>
+                <value>{prix_reference:,.0f}</value>
+                <small style='color: #6B7280;'>points</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        limits = calcul_limit_up_down(prix_reference, limit_pct)
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Limit Up</label>
+                <value style='color: #10B981;'>{limits['limit_up']:,.0f}</value>
+                <small style='color: #6B7280;'>+{limit_pct}%</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Limit Down</label>
+                <value style='color: #EF4444;'>{limits['limit_down']:,.0f}</value>
+                <small style='color: #6B7280;'>-{limit_pct}%</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Statut Limit Up/Down
+    st.markdown(f"""
+        <div class='{"success-box" if limit_info["trading_autorise"] else "warning-box"}'>
+            <strong>{limit_info['statut']}</strong><br>
+            {limit_info['message']}
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Graphique des limites
+    fig_limit = go.Figure()
+    
+    fig_limit.add_trace(go.Indicator(
+        mode="gauge+number",
+        value=prix_actuel,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': f"Prix Actuel: {prix_actuel:,.0f} pts", 'font': {'size': 24}},
+        gauge={
+            'axis': {'range': [limits['limit_down'] * 0.95, limits['limit_up'] * 1.05]},
+            'bar': {'color': "#1E3A5F"},
+            'steps': [
+                {'range': [limits['limit_down'] * 0.95, limits['limit_down']], 'color': "#FEE2E2"},
+                {'range': [limits['limit_down'], limits['limit_up']], 'color': "#D1FAE5"},
+                {'range': [limits['limit_up'], limits['limit_up'] * 1.05], 'color': "#FEE2E2"}
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': prix_actuel
+            }
+        }
+    ))
+    
+    fig_limit.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20))
+    st.plotly_chart(fig_limit, use_container_width=True)
+    
+    # ────────────────────────────────────────
+    # POSITION LIMITS
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 📋 Limites de Position (§4.4.c)")
+    
+    position_info = rapport['position_limits']
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Limite Maximale</label>
+                <value>{position_info['limite']:,}</value>
+                <small style='color: #6B7280;'>contrats</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>Position Actuelle</label>
+                <value>{position_actuelle:,}</value>
+                <small style='color: #6B7280;'>contrats</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        couleur = "#10B981" if position_info['pourcentage_utilise'] < 50 else "#F59E0B" if position_info['pourcentage_utilise'] < 80 else "#EF4444"
+        st.markdown(f"""
+            <div class='metric-card'>
+                <label>% de la Limite</label>
+                <value style='color: {couleur};'>{position_info['pourcentage_utilise']:.1f}%</value>
+                <small style='color: #6B7280;'>utilisé</small>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Statut position
+    st.markdown(f"""
+        <div class='{"success-box" if position_info["conformite"] and position_info["pourcentage_utilise"] < 80 else "warning-box" if position_info["conformite"] else "warning-box"}'>
+            <strong>{position_info['statut']}</strong><br>
+            {position_info['action_requise']}
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Barre de progression
+    st.progress(min(position_info['pourcentage_utilise'] / 100, 1.0))
+    st.caption(f"Utilisation de la limite : {position_info['pourcentage_utilise']:.1f}%")
+    
+    # ────────────────────────────────────────
+    # MARGE REQUISE
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 💰 Marge Requise pour la Position")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+            <div class='info-box'>
+                <strong>📊 Calcul de la Marge</strong><br>
+                Valeur notionnelle = |{position_actuelle:,}| × {prix_actuel:,.0f} × {config.MULTIPLICATEUR}<br>
+                = {abs(position_actuelle) * prix_actuel * config.MULTIPLICATEUR:,.0f} MAD<br><br>
+                Marge requise (10%) = <strong>{rapport['marge_requise']:,.0f} MAD</strong>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div class='info-box'>
+                <strong>📈 Risque de Position</strong><br>
+                P&L non réalisé : <strong>{risque_position['pnl_non_realise']:+,.0f} MAD</strong><br>
+                Variation : <strong>{risque_position['variation_pct']:+.2f}%</strong><br>
+                Niveau de risque : <strong>{risque_position['niveau_risque']}</strong><br>
+                {risque_position['recommendation']}
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # ────────────────────────────────────────
+    # TABLEAU RÉCAPITULATIF
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 📋 Récapitulatif de Conformité")
+    
+    conformite_data = pd.DataFrame({
+        "Critère": [
+            "📊 Limit Up/Down",
+            "📋 Position Limits",
+            "💰 Marge Requise",
+            "📈 Risque de Position"
+        ],
+        "Statut": [
+            limit_info['statut'],
+            position_info['statut'],
+            f"{rapport['marge_requise']:,.0f} MAD",
+            risque_position['niveau_risque']
+        ],
+        "Conforme": [
+            "✅" if limit_info['trading_autorise'] else "❌",
+            "✅" if position_info['conformite'] else "❌",
+            "✅",
+            "✅" if abs(risque_position['variation_pct']) < 10 else "⚠️"
+        ]
+    })
+    
+    st.dataframe(conformite_data, hide_index=True, use_container_width=True)
+    
+    # ────────────────────────────────────────
+    # RECOMMANDATIONS
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 💡 Recommandations de Conformité")
+    
+    if not rapport['conformite_globale']:
+        st.markdown(f"""
+            <div class='warning-box'>
+                <strong>⚠️ Actions Correctives Requises :</strong><br><br>
+                {'• ' + limit_info.get('message', '') if not limit_info['trading_autorise'] else ''}<br>
+                {'• ' + position_info.get('action_requise', '') if not position_info['conformite'] else ''}<br><br>
+                <strong>Recommandation :</strong> Contacter immédiatement le département conformité 
+                et réduire les positions si nécessaire.
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+            <div class='success-box'>
+                <strong>✅ Position Conforme</strong><br><br>
+                Toutes les limites réglementaires sont respectées.<br><br>
+                <strong>Recommandations :</strong>
+                • Maintenir une surveillance régulière des positions<br>
+                • Anticiper les augmentations de volatilité<br>
+                • Documenter les dépassements temporaires si applicable
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Info box pédagogique
+    st.markdown("""
+        <div class='info-box'>
+            <strong>💡 Le saviez-vous ?</strong><br>
+            Les limites de position et les mécanismes Limit Up/Down sont des outils essentiels 
+            de régulation des marchés à terme. Ils permettent de prévenir les manipulations, 
+            assurer la liquidité et protéger les investisseurs contre les mouvements de prix 
+            excessifs. La Chambre de Compensation (CCP) surveille en permanence le respect 
+            de ces limites (Document §4.4).
+        </div>
+    """, unsafe_allow_html=True)
 
 # ────────────────────────────────────────────
 # FOOTER
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
 
 
 
