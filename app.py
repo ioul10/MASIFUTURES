@@ -19,36 +19,283 @@ st.set_page_config(
 )
 
 # Style CSS
+# Style CSS Professionnel et Moderne
 st.markdown(f"""
     <style>
-    .main {{ background-color: {config.BACKGROUND}; }}
-    h1, h2, h3 {{ color: {config.PRIMARY}; }}
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    
+    /* Global Styles */
+    .main {{ 
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+        font-family: 'Inter', sans-serif;
+    }}
+    
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 {{ 
+        color: #1e3a5f; 
+        font-family: 'Inter', sans-serif;
+        font-weight: 700;
+        margin-bottom: 0.5em;
+    }}
+    
+    h1 {{ font-size: 2.5em; }}
+    h2 {{ font-size: 2em; }}
+    h3 {{ font-size: 1.5em; }}
+    
+    /* Header Principal */
+    .main-header {{
+        background: linear-gradient(135deg, #1e3a5f 0%, #2e5c8a 50%, #3e7cad 100%);
+        padding: 40px 30px;
+        border-radius: 16px;
+        margin-bottom: 30px;
+        box-shadow: 0 8px 24px rgba(30, 58, 95, 0.2);
+        position: relative;
+        overflow: hidden;
+    }}
+    
+    .main-header::before {{
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 300px;
+        height: 300px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
+    }}
+    
+    .main-header h1 {{
+        color: white !important;
+        margin: 0;
+        font-size: 2.5em;
+        font-weight: 800;
+        position: relative;
+        z-index: 1;
+    }}
+    
+    .main-header p {{
+        color: #e0e8f0;
+        margin: 10px 0 0 0;
+        font-size: 1.2em;
+        position: relative;
+        z-index: 1;
+    }}
+    
+    /* Metric Cards */
     .metric-card {{ 
         background: white; 
-        padding: 20px; 
-        border-radius: 10px; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        padding: 25px; 
+        border-radius: 12px; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         margin: 10px 0;
+        border-left: 5px solid #2e5c8a;
+        transition: all 0.3s ease;
     }}
-    .sidebar-metric {{
-        background: {config.PRIMARY};
-        color: white;
-        padding: 15px;
-        border-radius: 8px;
-        margin: 10px 0;
+    
+    .metric-card:hover {{
+        transform: translateY(-4px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.12);
     }}
-    .sidebar-metric label {{
-        color: #E0E0E0;
+    
+    .metric-card label {{
+        color: #6b7280;
+        font-size: 0.85em;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: block;
+        margin-bottom: 8px;
+    }}
+    
+    .metric-card value {{
+        color: #1e3a5f;
+        font-size: 2em;
+        font-weight: 700;
+        display: block;
+        line-height: 1.2;
+    }}
+    
+    .metric-card small {{
+        color: #9ca3af;
         font-size: 0.9em;
+        display: block;
+        margin-top: 5px;
     }}
+    
+    /* Sidebar Metrics */
+    .sidebar-metric {{
+        background: linear-gradient(135deg, #1e3a5f 0%, #2e5c8a 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 12px;
+        margin: 15px 0;
+        box-shadow: 0 4px 12px rgba(30, 58, 95, 0.3);
+        transition: all 0.3s ease;
+    }}
+    
+    .sidebar-metric:hover {{
+        transform: translateX(4px);
+        box-shadow: 0 6px 16px rgba(30, 58, 95, 0.4);
+    }}
+    
+    .sidebar-metric label {{
+        color: #b8d4e8;
+        font-size: 0.85em;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: block;
+        margin-bottom: 6px;
+    }}
+    
     .sidebar-metric value {{
         color: white;
-        font-size: 1.3em;
-        font-weight: bold;
+        font-size: 1.6em;
+        font-weight: 700;
+        display: block;
+        line-height: 1.2;
+    }}
+    
+    /* Info Boxes */
+    .info-box {{
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        border-left: 5px solid #2e5c8a;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+        box-shadow: 0 2px 8px rgba(46, 92, 138, 0.1);
+    }}
+    
+    .success-box {{
+        background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+        border-left: 5px solid #10b981;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
+    }}
+    
+    .warning-box {{
+        background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+        border-left: 5px solid #f59e0b;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+        box-shadow: 0 2px 8px rgba(245, 158, 11, 0.1);
+    }}
+    
+    /* Buttons */
+    .stButton>button {{
+        background: linear-gradient(135deg, #1e3a5f 0%, #2e5c8a 100%);
+        color: white !important;
+        border: none;
+        padding: 12px 28px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 1em;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(30, 58, 95, 0.2);
+    }}
+    
+    .stButton>button:hover {{
+        background: linear-gradient(135deg, #2e5c8a 0%, #3e7cad 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(30, 58, 95, 0.3);
+    }}
+    
+    /* Selectbox & Inputs */
+    .stSelectbox>div>div, .stNumberInput>div>div, .stSlider>div {{
+        border-radius: 8px;
+        border: 2px solid #e5e7eb;
+        transition: all 0.3s ease;
+    }}
+    
+    .stSelectbox>div>div:focus-within, .stNumberInput>div>div:focus-within {{
+        border-color: #2e5c8a;
+        box-shadow: 0 0 0 3px rgba(46, 92, 138, 0.1);
+    }}
+    
+    /* Divider */
+    hr {{
+        border: none;
+        border-top: 2px solid #e5e7eb;
+        margin: 35px 0;
+    }}
+    
+    /* Expander */
+    .streamlit-expanderHeader {{
+        background: #f9fafb;
+        border-radius: 8px;
+        padding: 12px;
+        transition: all 0.3s ease;
+    }}
+    
+    .streamlit-expanderHeader:hover {{
+        background: #f3f4f6;
+    }}
+    
+    /* Table/DataFrame */
+    .dataframe {{
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        font-family: 'Inter', sans-serif;
+    }}
+    
+    /* Progress Bar */
+    .stProgress > div > div > div > div {{
+        background: linear-gradient(90deg, #1e3a5f 0%, #3e7cad 100%);
+    }}
+    
+    /* Spinner */
+    .stSpinner > div {{
+        border-top-color: #1e3a5f;
+    }}
+    
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {{
+        width: 10px;
+    }}
+    
+    ::-webkit-scrollbar-track {{
+        background: #f1f1f1;
+        border-radius: 10px;
+    }}
+    
+    ::-webkit-scrollbar-thumb {{
+        background: #2e5c8a;
+        border-radius: 10px;
+    }}
+    
+    ::-webkit-scrollbar-thumb:hover {{
+        background: #1e3a5f;
+    }}
+    
+    /* Animations */
+    @keyframes fadeIn {{
+        from {{ opacity: 0; transform: translateY(20px); }}
+        to {{ opacity: 1; transform: translateY(0); }}
+    }}
+    
+    .main > div {{
+        animation: fadeIn 0.5s ease-in-out;
+    }}
+    
+    /* Responsive */
+    @media (max-width: 768px) {{
+        .main-header {{
+            padding: 25px 20px;
+        }}
+        .main-header h1 {{
+            font-size: 1.8em;
+        }}
+        .metric-card value {{
+            font-size: 1.5em;
+        }}
     }}
     </style>
 """, unsafe_allow_html=True)
-
 # ────────────────────────────────────────────
 # SIDEBAR - NIVEAUX DES INDICES
 # ────────────────────────────────────────────
@@ -119,10 +366,15 @@ with st.sidebar:
     )
 
 # ────────────────────────────────────────────
-# HEADER PRINCIPAL
+# HEADER PRINCIPAL (Design Premium)
 # ────────────────────────────────────────────
-st.title(f"📈 {config.APP_NAME}")
-st.caption(f"Version {config.APP_VERSION} — Données Bourse de Casablanca")
+st.markdown(f"""
+    <div class='main-header'>
+        <h1>📈 {config.APP_NAME}</h1>
+        <p>Plateforme Professionnelle de Trading sur Futures MASI/MASI20<br>
+        <small style='opacity: 0.9;'>Basé sur le document CDG Capital — Version {config.APP_VERSION}</small></p>
+    </div>
+""", unsafe_allow_html=True)
 
 # ────────────────────────────────────────────
 # PAGE 1 : ACCUEIL
@@ -1722,10 +1974,26 @@ elif page == "📏 Limites":
     """, unsafe_allow_html=True)
 
 # ────────────────────────────────────────────
-# FOOTER
+# FOOTER PROFESSIONNEL
 # ────────────────────────────────────────────
 st.divider()
-st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+st.markdown(f"""
+    <div style='text-align: center; padding: 30px; color: {config.COLORS['text_muted']}; 
+                font-family: "Inter", sans-serif; font-size: 0.9em;'>
+        <p style='margin: 0 0 10px 0;'>
+            <strong style='color: {config.COLORS['primary']};'>{config.APP_NAME}</strong> 
+            v{config.APP_VERSION}
+        </p>
+        <p style='margin: 0 0 10px 0;'>
+            Basé sur le document "Introduction des Contrats Futures sur les Indices MASI et MASI20"<br>
+            CDG Capital — Marché à Terme Marocain
+        </p>
+        <p style='margin: 0; font-size: 0.85em; opacity: 0.8;'>
+            © {datetime.datetime.now().year} — Application à usage éducatif et professionnel
+        </p>
+    </div>
+""", unsafe_allow_html=True)
+
 
 
 
