@@ -303,51 +303,51 @@ elif page == "📊 Indices & Historique":
         ]
     })
     st.dataframe(specs, hide_index=True, use_container_width=True)
-# ────────────────────────────────────────
-# ACTUALITÉS DU MARCHÉ
-# ────────────────────────────────────────
-st.divider()
-st.markdown("### 📰 Actualités du Marché Marocain")
+   # ────────────────────────────────────────
+   # ACTUALITÉS DU MARCHÉ
+   # ────────────────────────────────────────
+   st.divider()
+   st.markdown("### 📰 Actualités du Marché Marocain")
 
-# Bouton refresh
-col1, col2 = st.columns([4, 1])
-with col1:
-    st.caption("Actualités depuis Ilboursa et Bourse de Casablanca")
-with col2:
-    if st.button("🔄 Actualiser", key="refresh_news"):
-        st.cache_resource.clear()
-        st.rerun()
+   # Bouton refresh
+   col1, col2 = st.columns([4, 1])
+   with col1:
+      st.caption("Actualités depuis Ilboursa et Bourse de Casablanca")
+   with col2:
+      if st.button("🔄 Actualiser", key="refresh_news"):
+          st.cache_resource.clear()
+          st.rerun()
 
-# Récupération des news
-with st.spinner("Chargement des actualités..."):
-    df_news = get_all_news(force_refresh=False, max_total=10)
+   # Récupération des news
+   with st.spinner("Chargement des actualités..."):
+       df_news = get_all_news(force_refresh=False, max_total=10)
 
-if not df_news.empty:
-    # Affichage des news
-    for idx, row in df_news.iterrows():
-        with st.expander(f"📌 {row['titre']} — {row['source']} ({row['date']})"):
-            if row['resume']:
-                st.markdown(f"*{row['resume']}*")
+   if not df_news.empty:
+       # Affichage des news
+       for idx, row in df_news.iterrows():
+           with st.expander(f"📌 {row['titre']} — {row['source']} ({row['date']})"):
+               if row['resume']:
+                   st.markdown(f"*{row['resume']}*")
             
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.caption(f"Catégorie: {row['categorie']}")
-            with col2:
-                st.markdown(f"[🔗 Voir plus]({row['url']})")
+               col1, col2 = st.columns([3, 1])
+               with col1:
+                   st.caption(f"Catégorie: {row['categorie']}")
+               with col2:
+                   st.markdown(f"[🔗 Voir plus]({row['url']})")
             
-            st.divider()
-else:
-    st.info("ℹ️ Aucune actualité disponible pour le moment. Réessayez plus tard.")
+               st.divider()
+   else:
+       st.info("ℹ️ Aucune actualité disponible pour le moment. Réessayez plus tard.")
 
-# Info box
-st.markdown("""
-    <div class='info-box'>
-        <strong>💡 Sources d'actualités :</strong><br>
-        • Ilboursa.com - Actualités boursières marocaines<br>
-        • Casablanca-bourse.com - Communiqués officiels<br>
-        Les actualités sont mises à jour automatiquement toutes les 30 minutes.
-    </div>
-""", unsafe_allow_html=True)
+   # Info box
+   st.markdown("""
+       <div class='info-box'>
+           <strong>💡 Sources d'actualités :</strong><br>
+           • Ilboursa.com - Actualités boursières marocaines<br>
+           • Casablanca-bourse.com - Communiqués officiels<br>
+           Les actualités sont mises à jour automatiquement toutes les 30 minutes.
+       </div>
+   """, unsafe_allow_html=True)
 
 # ────────────────────────────────────────────
 # PAGE 3 : VALORISATION FUTURES (§7 du document)
@@ -1726,6 +1726,7 @@ elif page == "📏 Limites":
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
 
 
 
