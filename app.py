@@ -8,7 +8,8 @@ import numpy as np
 import plotly.graph_objects as go
 import config
 from utils.calculations import (prix_future_theorique, valeur_notionnelle, jours_vers_annees,nombre_contrats_couverture, simulation_couverture,cout_de_portage,prime_future,detecter_arbitrage,calcul_marge_initiale,calcul_marge_maintenance,calcul_appel_marge,simulation_marging_to_market, analyser_risque_marge, calcul_var_parametrique, calcul_var_historique, calcul_cvar, stress_testing, calcul_delta_equivalent, analyser_risque_complet,    calcul_limit_up_down, verifier_limit_up_down,  calcul_position_limit, verifier_conformity_position, calcul_marge_requise_position, analyse_risque_position, rapport_conformite_complet )
-from utils.scraping import get_indices_data, get_historical_data, get_cache_info  
+from utils.scraping import get_indices_data, get_historical_data, get_cache_info 
+from utils.news_scraper import get_all_news, get_latest_market_update
 
 # Configuration de la page
 st.set_page_config(
@@ -302,6 +303,51 @@ elif page == "📊 Indices & Historique":
         ]
     })
     st.dataframe(specs, hide_index=True, use_container_width=True)
+# ────────────────────────────────────────
+# ACTUALITÉS DU MARCHÉ
+# ────────────────────────────────────────
+st.divider()
+st.markdown("### 📰 Actualités du Marché Marocain")
+
+# Bouton refresh
+col1, col2 = st.columns([4, 1])
+with col1:
+    st.caption("Actualités depuis Ilboursa et Bourse de Casablanca")
+with col2:
+    if st.button("🔄 Actualiser", key="refresh_news"):
+        st.cache_resource.clear()
+        st.rerun()
+
+# Récupération des news
+with st.spinner("Chargement des actualités..."):
+    df_news = get_all_news(force_refresh=False, max_total=10)
+
+if not df_news.empty:
+    # Affichage des news
+    for idx, row in df_news.iterrows():
+        with st.expander(f"📌 {row['titre']} — {row['source']} ({row['date']})"):
+            if row['resume']:
+                st.markdown(f"*{row['resume']}*")
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.caption(f"Catégorie: {row['categorie']}")
+            with col2:
+                st.markdown(f"[🔗 Voir plus]({row['url']})")
+            
+            st.divider()
+else:
+    st.info("ℹ️ Aucune actualité disponible pour le moment. Réessayez plus tard.")
+
+# Info box
+st.markdown("""
+    <div class='info-box'>
+        <strong>💡 Sources d'actualités :</strong><br>
+        • Ilboursa.com - Actualités boursières marocaines<br>
+        • Casablanca-bourse.com - Communiqués officiels<br>
+        Les actualités sont mises à jour automatiquement toutes les 30 minutes.
+    </div>
+""", unsafe_allow_html=True)
 
 # ────────────────────────────────────────────
 # PAGE 3 : VALORISATION FUTURES (§7 du document)
@@ -1680,6 +1726,7 @@ elif page == "📏 Limites":
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
 
 
 
