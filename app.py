@@ -540,40 +540,40 @@ elif page == "🧮 Pricing":
         </div>
     """, unsafe_allow_html=True)
 
-# ────────────────────────────────────────
-# EXPORT PDF
-# ────────────────────────────────────────
-st.divider()
-st.markdown("### 📄 Export PDF")
+    # ────────────────────────────────────────
+    # EXPORT PDF
+    # ────────────────────────────────────────
+    st.divider()
+    st.markdown("### 📄 Export PDF")
 
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.caption("Générez un rapport PDF professionnel de vos calculs")
-with col2:
-    if st.button("📄 Exporter PDF", use_container_width=True):
-        from utils.pdf_export import export_pricing_pdf
-        filename = export_pricing_pdf(
-            spot=spot,
-            r=r,
-            q=q,
-            jours=jours,
-            F0=F0,
-            valeur_not=valeur_not,
-            prime=prime,
-            cout_port=cout_port,
-            prix_marche=prix_marche,
-            signal=signal,
-            strategie=strategie
-        )
-        
-        # Lire le fichier et proposer le téléchargement
-        with open(filename, "rb") as pdf_file:
-            st.download_button(
-                label="📥 Télécharger le PDF",
-                data=pdf_file.read(),
-                file_name=filename,
-                mime="application/pdf"
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.caption("Générez un rapport PDF professionnel de vos calculs")
+    with col2:
+        if st.button("📄 Exporter PDF", use_container_width=True):
+           from utils.pdf_export import export_pricing_pdf
+           filename = export_pricing_pdf(
+               spot=spot,
+               r=r,
+               q=q,
+               jours=jours,
+               F0=F0,
+               valeur_not=valeur_not,
+               prime=prime,
+               cout_port=cout_port,
+               prix_marche=prix_marche,
+               signal=signal,
+               strategie=strategie
             )
+        
+           # Lire le fichier et proposer le téléchargement
+           with open(filename, "rb") as pdf_file:
+               st.download_button(
+                   label="📥 Télécharger le PDF",
+                   data=pdf_file.read(),
+                   file_name=filename,
+                   mime="application/pdf"
+               )
   
 # ────────────────────────────────────────────
 # PAGE 4 : COUVERTURE (HEDGING) - §6 du document
@@ -1450,6 +1450,7 @@ if st.button("📄 Exporter Risk Report"):
 # ────────────────────────────────────────────
 st.divider()
 st.caption(f"{config.APP_NAME} v{config.APP_VERSION} | Basé sur le document CDG Capital | Scraping optimisé avec cache")
+
 
 
 
